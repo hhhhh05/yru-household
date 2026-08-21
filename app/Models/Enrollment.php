@@ -1,0 +1,104 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+/** รายชื่อเข้าร่วมโครงการ — เชื่อมครัวเรือนกับกิจกรรม */
+class Enrollment extends Model
+{
+    /** สถานะการดำเนินงานที่ใช้ได้ */
+    public const STATUSES = ['กำลังดำเนินการ', 'สำเร็จ', 'รอเริ่ม', 'ออกกลางคัน'];
+
+    protected $fillable = ['code', 'household_id', 'activity_id', 'joined_at', 'status', 'income_after', 'note'];
+
+    public function household(): BelongsTo
+    {
+        return $this->belongsTo(Household::class);
+    }
+
+    public function activity(): BelongsTo
+    {
+        return $this->belongsTo(Activity::class);
+    }
+
+    /**
+     * ปรับชื่อกิจกรรมให้เทียบกันได้ (ตัดช่องว่างและตัวพิมพ์เล็กใหญ่)
+     * ใช้ตรวจกฎ «ปีงบเดียวกันห้ามซ้ำชื่อกิจกรรม»
+     */
+    public static function normalizeName(?string $name): string
+    {
+        return (string) preg_replace('/\s+/u', '', mb_strtolower(trim((string) $name)));
+    }
+
+    /**
+     * หารายการที่ชนกฎกับกิจกรรมปลายทาง
+     * — ครัวเรือนนี้อยู่ในกิจกรรม «ชื่อเดียวกัน» และ «ปีงบเดียวกัน» อยู่แล้วหรือไม่
+     *   (ครอบคลุมกรณีกิจกรรมเดิมซ้ำ ๆ ด้วย เพราะชื่อและปีงบก็ตรงกันเอง)
+     *
+     * คืน null ถ้าเพิ่มได้
+     */
+    public static function conflictWith(int $householdId, Activity $activity): ?self
+    {
+        $target = self::normalizeName($activity->name);
+
+        return static::with('activity')
+            ->where('household_id', $householdId)
+            ->whereHas('activity', fn ($q) => $q->where('fiscal_year', $activity->fiscal_year))
+            ->get()
+            ->first(fn (self $e) => self::normalizeName($e->activity->name ?? '') === $target);
+    }
+
+    /**
+     * ครัวเรือนที่เพิ่มเข้ากิจกรรมนี้ไม่ได้ (ติดกฎชื่อกิจกรรม + ปีงบ)
+     *
+     * @return array<int, string>   [household_id => รหัส PA ที่ชนกฎ]
+     */
+    public static function blockedHouseholdIds(Activity $activity): array
+    {
+        $target = self::normalizeName($activity->name);
+        $out = [];
+
+        $rows = static::with('activity')
+            ->whereHas('activity', fn ($q) => $q->where('fiscal_year', $activity->fiscal_year))
+            ->get();
+
+        foreach ($rows as $enrollment) {
+            if (self::normalizeName($enrollment->activity->name ?? '') === $target) {
+                $out[$enrollment->household_id] = $enrollment->activity->pa;
+            }
+        }
+
+        return $out;
+    }
+
+    /** วันที่เข้าร่วมในรูป YYYY-MM-DD ตามที่ชีตเดิมใช้ (พ.ศ.) */
+    public function joinedDate(): string
+    {
+        return (string) ($this->getRawOriginal('joined_at') ?? $this->joined_at ?? '');
+    }
+
+    /**
+     * รหัสรายการถัดไป เช่น EN0105
+     * นับจากเลขสูงสุดที่มีอยู่ (ไม่ใช้ count เพราะถ้าเคยลบรายการไปแล้วจะออกรหัสซ้ำ)
+     */
+    public static function nextCode(): string
+    {
+        $max = 0;
+
+        foreach (static::whereNotNull('code')->pluck('code') as $code) {
+            $max = max($max, (int) preg_replace('/\D/', '', (string) $code));
+        }
+
+        return 'EN'.str_pad((string) ($max + 1), 4, '0', STR_PAD_LEFT);
+    }
+
+    /** วันที่วันนี้ในรูปพุทธศักราช เพื่อให้ตรงรูปแบบเดียวกับข้อมูลจากชีตเดิม */
+    public static function todayBuddhist(): string
+    {
+        $now = now();
+
+        return ($now->year + 543).'-'.$now->format('m-d');
+    }
+}

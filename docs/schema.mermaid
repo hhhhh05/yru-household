@@ -1,0 +1,84 @@
+erDiagram
+    provinces  ||--o{ districts   : "มีอำเภอ"
+    districts  ||--o{ tambons     : "มีตำบล"
+    tambons    ||--o{ villages    : "มีหมู่บ้าน"
+    tambons    ||--o{ households  : "ครัวเรือนอยู่ในตำบล"
+    villages   ||--o{ households  : "ครัวเรือนอยู่ในหมู่บ้าน"
+    programs   ||--o{ activities  : "โครงการหลักมีกิจกรรม"
+    households ||--o{ enrollments : "เข้าร่วมกิจกรรม"
+    activities ||--o{ enrollments : "มีผู้เข้าร่วม"
+    users      ||--o{ households  : "ผู้บันทึกข้อมูล"
+
+    provinces {
+        bigint id PK
+        string name "ยะลา · ปัตตานี · นราธิวาส"
+    }
+
+    districts {
+        bigint id PK
+        bigint province_id FK
+        string name "ชื่ออำเภอ — unique ต่อจังหวัด"
+    }
+
+    tambons {
+        bigint id PK
+        bigint district_id FK
+        string name "ชื่อตำบล — unique ต่ออำเภอ"
+        smallint area_code "รหัสพื้นที่เป้าหมาย 1-99 ใช้ประกอบรหัส HC"
+    }
+
+    villages {
+        bigint id PK
+        bigint tambon_id FK "null ได้ ถ้ายังไม่ระบุตำบล"
+        string name "ชื่อหมู่บ้าน / ชุมชน"
+        tinyint moo "หมู่ที่"
+    }
+
+    households {
+        bigint id PK
+        string hc UK "PY + ปีงบ + รหัสพื้นที่ + ลำดับ"
+        string prefix "นาย/นาง/นางสาว/เด็กชาย/เด็กหญิง"
+        string first_name
+        string last_name
+        string house_no
+        bigint village_id FK
+        bigint tambon_id FK
+        string phone
+        decimal income_bl "รายได้ baseline บาท/ปี"
+        decimal lat "ละติจูด"
+        decimal lng "ลองจิจูด"
+        string source "แหล่งอ้างอิงข้อมูล"
+        string status "อยู่ในเป้าหมาย / เฝ้าระวัง / พ้นเกณฑ์"
+        text note
+        bigint created_by FK
+        bigint updated_by FK
+        timestamp deleted_at "soft delete — กู้คืนได้"
+    }
+
+    programs {
+        bigint id PK
+        smallint fiscal_year "ปีงบประมาณ พ.ศ."
+        string name "ชื่อโครงการหลัก"
+    }
+
+    activities {
+        bigint id PK
+        string pa UK "LP + ปีงบ + ลำดับ"
+        bigint program_id FK
+        smallint fiscal_year
+        string name "ชื่อกิจกรรม"
+        decimal budget "งบประมาณ"
+        smallint target_households "เป้าหมายครัวเรือน"
+        string unit "หน่วยงานรับผิดชอบ"
+        timestamp deleted_at
+    }
+
+    enrollments {
+        bigint id PK
+        string code UK "EN0001 (รหัสจากชีตเดิม)"
+        bigint household_id FK
+        bigint activity_id FK
+        date joined_at "วันที่เข้าร่วม"
+        string status "รอเริ่ม / กำลังดำเนินการ / สำเร็จ / ออกกลางคัน"
+        text note
+    }

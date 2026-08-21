@@ -1,0 +1,243 @@
+<?php
+
+namespace App\Repositories;
+
+use App\Models\Household;
+use App\Support\Thai;
+use Illuminate\Database\Eloquent\Builder;
+
+/**
+ * ทะเบียนครัวเรือน — อ่าน/เขียนฐานข้อมูลจริงผ่าน Model Household
+ *
+ * ทุกเมธอดคืนค่าเป็นอาร์เรย์รูปแบบเดิม
+ * ['id','hc','name','house','vill','moo','prov','dist','tam','phone','income','lat','lng']
+ * จึงใช้กับหน้า Blade และ DataQualityAnalyzer เดิมได้ทันที
+ */
+class HouseholdRepository
+{
+    /** เป้าหมายจำนวนครัวเรือนที่บันทึกในปีนี้ */
+    public const TARGET = 350;
+
+    /** @var array<int, array<string, mixed>>|null */
+    private ?array $cache = null;
+
+    public function __construct(private EnrollmentRepository $enrollments) {}
+
+    /** คิวรีพร้อมโหลดความสัมพันธ์ที่ต้องใช้แสดงผล */
+    public function query(): Builder
+    {
+        return Household::query()->with(['tambon.district.province']);
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    public function all(): array
+    {
+        if ($this->cache !== null) {
+            return $this->cache;
+        }
+
+        return $this->cache = $this->query()
+            ->orderBy('hc')
+            ->get()
+            ->map(fn (Household $h) => $h->toLegacyArray())
+            ->all();
+    }
+
+    public function find(string $hc): ?array
+    {
+        foreach ($this->all() as $household) {
+            if ($household['hc'] === $hc) {
+                return $household;
+            }
+        }
+
+        return null;
+    }
+
+    /** ดึง Model จริง (ใช้ตอนแก้ไข/ลบ) */
+    public function model(string $hc): ?Household
+    {
+        return Household::where('hc', $hc)->first();
+    }
+
+    public function count(): int
+    {
+        return count($this->all());
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    public function withIncome(): array
+    {
+        return array_values(array_filter($this->all(), fn ($h) => $h['income'] !== null));
+    }
+
+    public function medianIncome(): float
+    {
+        $values = array_column($this->withIncome(), 'income');
+        sort($values);
+        $n = count($values);
+
+        if ($n === 0) {
+            return 0;
+        }
+
+        return $n % 2 ? (float) $values[intdiv($n - 1, 2)] : ($values[$n / 2 - 1] + $values[$n / 2]) / 2;
+    }
+
+    /** @return array<int, string> */
+    public function villages(): array
+    {
+        $out = [];
+
+        foreach ($this->all() as $household) {
+            if ($household['vill'] !== '') {
+                $out[$household['vill']] = true;
+            }
+        }
+
+        return array_keys($out);
+    }
+
+    /**
+     * จัดกลุ่มตามหมู่บ้าน (ตัดสระ/วรรณยุกต์ซ้ำก่อนจัดกลุ่ม)
+     *
+     * @return array<int, array{name:string, n:int, moo:int|null, variants:array<int,string>}>
+     */
+    public function byVillage(): array
+    {
+        $groups = [];
+
+        foreach ($this->all() as $household) {
+            $key = Thai::dedup($household['vill']) ?: '(ไม่ระบุ)';
+
+            if (! isset($groups[$key])) {
+                $groups[$key] = ['name' => $key, 'n' => 0, 'moo' => $household['moo'], 'variants' => []];
+            }
+
+            $groups[$key]['n']++;
+            $groups[$key]['variants'][trim($household['vill'])] = true;
+        }
+
+        $out = [];
+
+        foreach ($groups as $group) {
+            $group['variants'] = array_keys($group['variants']);
+            $out[] = $group;
+        }
+
+        usort($out, fn ($a, $b) => $b['n'] <=> $a['n']);
+
+        return $out;
+    }
+
+    /** @return array<string, int> */
+    public function countByTambon(): array
+    {
+        $out = [];
+
+        foreach ($this->all() as $household) {
+            $key = Thai::nrm($household['tam']);
+            $out[$key] = ($out[$key] ?? 0) + 1;
+        }
+
+        return $out;
+    }
+
+    /**
+     * กรอง + เรียงลำดับ (กรองด้วย SQL · เรียงลำดับภาษาไทยด้วย PHP)
+     *
+     * @param  array{q?:string,prov?:string,dist?:string,tam?:string,vill?:string,inc?:string,sort?:string,dir?:int}  $f
+     * @return array<int, array<string, mixed>>
+     */
+    public function filter(array $f = []): array
+    {
+        $query = $this->query()->search($f['q'] ?? null);
+
+        if ($prov = $f['prov'] ?? '') {
+            $query->whereHas('tambon.district.province', fn (Builder $q) => $q->where('name', $prov));
+        }
+
+        if ($dist = $f['dist'] ?? '') {
+            $query->whereHas('tambon.district', fn (Builder $q) => $q->where('name', $dist));
+        }
+
+        if ($tam = $f['tam'] ?? '') {
+            $name = Thai::tamName($tam);
+            $code = Thai::tamCode($tam);
+            $query->whereHas('tambon', function (Builder $q) use ($name, $code) {
+                $q->where('name', $name);
+
+                if ($code !== null) {
+                    $q->where('area_code', $code);
+                }
+            });
+        }
+
+        if ($vill = $f['vill'] ?? '') {
+            $query->where('village_name', $vill);
+        }
+
+        $inc = $f['inc'] ?? '';
+
+        if ($inc === 'y') {
+            $query->whereNotNull('income_bl');
+        } elseif ($inc === 'n') {
+            $query->whereNull('income_bl');
+        } elseif ($inc === 'p') {
+            $query->has('enrollments');
+        } elseif ($inc === 'np') {
+            $query->doesntHave('enrollments');
+        }
+
+        $rows = $query->get()->map(fn (Household $h) => $h->toLegacyArray())->all();
+
+        $sort = $f['sort'] ?? 'hc';
+        $dir = ($f['dir'] ?? 1) < 0 ? -1 : 1;
+
+        usort($rows, function ($x, $y) use ($sort, $dir) {
+            if ($sort === 'income') {
+                return (($x['income'] ?? -1) <=> ($y['income'] ?? -1)) * $dir;
+            }
+
+            if ($sort === 'pj') {
+                $a = count($this->enrollments->forHousehold($x['hc']));
+                $b = count($this->enrollments->forHousehold($y['hc']));
+
+                return ($a <=> $b) * $dir;
+            }
+
+            return Thai::compare((string) ($x[$sort] ?? ''), (string) ($y[$sort] ?? '')) * $dir;
+        });
+
+        return $rows;
+    }
+
+    /** ออกรหัส HC ถัดไปจากรหัสพื้นที่ */
+    public function nextHc(?int $code): string
+    {
+        return Household::nextHc($code);
+    }
+
+    /** ความสมบูรณ์ของข้อมูล 0..1 */
+    public function completeness(): float
+    {
+        $fields = ['name', 'house', 'vill', 'moo', 'dist', 'tam', 'phone', 'income'];
+        $ok = 0;
+
+        foreach ($this->all() as $household) {
+            foreach ($fields as $field) {
+                if (($household[$field] ?? null) !== null && $household[$field] !== '') {
+                    $ok++;
+                }
+            }
+        }
+
+        return $ok / max(1, $this->count() * count($fields));
+    }
+
+    /** ล้างแคชหลังบันทึกข้อมูล */
+    public function forget(): void
+    {
+        $this->cache = null;
+    }
+}
