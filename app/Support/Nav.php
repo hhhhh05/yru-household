@@ -86,16 +86,6 @@ class Nav
         return self::items()[$key] ?? self::items()['home'];
     }
 
-    /** ปุ่มหลักมุมขวาของแถบบน: [ข้อความ, ชื่อ route] */
-    public static function primaryButton(string $key): array
-    {
-        return match ($key) {
-            'pj' => ['เพิ่มกิจกรรม', 'activities.create'],
-            'en' => ['เพิ่มรายชื่อ', 'enrollments.create'],
-            default => ['เพิ่มครัวเรือน', 'households.create'],
-        };
-    }
-
     /** ตัวเลขท้ายเมนู */
     public static function count(?string $kind): ?int
     {

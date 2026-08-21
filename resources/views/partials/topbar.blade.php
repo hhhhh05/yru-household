@@ -1,9 +1,3 @@
-@php
-    use App\Support\Nav;
-
-    [$btnLabel, $btnRoute] = Nav::primaryButton($navKey);
-@endphp
-
 <header class="top">
     <button class="icon-btn" id="burger" title="ย่อ/ขยายเมนู" aria-label="ย่อ/ขยายเมนู">
         <x-icon name="menu" :size="18" :stroke="2" />
@@ -28,11 +22,6 @@
     <button class="icon-btn" id="theme" title="สลับโหมดสว่าง/มืด" aria-label="สลับโหมดสว่าง/มืด">
         <x-icon name="sun" :stroke="2" />
     </button>
-
-    <a class="btn pri" href="{{ route($btnRoute, qs()) }}">
-        <x-icon name="plus" :size="15" :stroke="2.4" />
-        <span id="newLbl">{{ $btnLabel }}</span>
-    </a>
 
     @auth
         {{-- ผู้ใช้ที่ล็อกอินอยู่ + ปุ่มออกจากระบบ --}}
