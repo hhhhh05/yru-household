@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\ActivityController;
+use App\Http\Controllers\AuthController;
 use App\Http\Controllers\AreaController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DataQualityController;
@@ -15,9 +16,32 @@ use Illuminate\Support\Facades\Route;
 |--------------------------------------------------------------------------
 | เส้นทางของระบบฐานข้อมูลครัวเรือน มรย.พัฒนาท้องถิ่น (ยุทธศาสตร์ที่ 1)
 |--------------------------------------------------------------------------
-| เวอร์ชันนี้เป็น UI เท่านั้น — ยังไม่เชื่อมฐานข้อมูล
-| ข้อมูลอ่านจาก app/Data/*.php ผ่านคลาสใน app/Repositories
+| ทุกหน้าต้องล็อกอินก่อน ยกเว้นหน้าล็อกอินเอง
+| ถ้าเพิ่มเส้นทางใหม่ ให้วางไว้ในบล็อก middleware('auth') ด้านล่าง
 */
+
+/* --------------------------------------------------------- เข้าสู่ระบบ ---- */
+Route::middleware('guest')->group(function () {
+    Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
+    Route::post('/login', [AuthController::class, 'login']);
+
+    /* สร้างบัญชีแรก — คอนโทรลเลอร์ปฏิเสธเองถ้ามีผู้ใช้อยู่แล้ว */
+    Route::post('/setup/first-user', [AuthController::class, 'createFirstUser'])->name('auth.first-user');
+
+    /* สร้างตารางตอนติดตั้งใหม่ (ยังไม่มีตาราง users จึงล็อกอินไม่ได้)
+       คอนโทรลเลอร์ปฏิเสธเองเมื่อมีผู้ใช้แล้ว */
+    Route::post('/setup/bootstrap-migrate', [AuthController::class, 'bootstrapMigrate'])
+        ->name('auth.bootstrap-migrate');
+});
+
+Route::post('/logout', [AuthController::class, 'logout'])
+    ->middleware('auth')
+    ->name('logout');
+
+/* ============================================================================
+   ตั้งแต่บรรทัดนี้ลงไป ต้องล็อกอินก่อนทั้งหมด
+   ============================================================================ */
+Route::middleware('auth')->group(function () {
 
 /* ---------------------------------------------------------- ภาพรวมระบบ ---- */
 Route::get('/', DashboardController::class)->name('dashboard');
@@ -77,3 +101,5 @@ Route::post('/setup/seed/{type}', [SetupController::class, 'seed'])
 Route::get('/export/{type}', ExportController::class)
     ->whereIn('type', ['households', 'activities', 'enrollments', 'areas', 'quality'])
     ->name('export');
+
+});
