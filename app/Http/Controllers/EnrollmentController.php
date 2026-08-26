@@ -365,6 +365,10 @@ class EnrollmentController extends Controller
         $incomePairs = [];        // เฉพาะรายที่มีทั้งรายได้ตั้งต้นและหลังจบ — ใช้คิดส่วนต่าง
         $villages = [];
 
+        /* ครัวเรือนที่อยู่ในขอบเขตที่กำลังดู — ใช้นับพื้นที่ครอบคลุม
+           เก็บทีละรายซ้ำไม่ได้ เพราะครัวเรือนเดียวเข้าได้หลายกิจกรรม จึงคีย์ด้วย HC */
+        $scopeHouseholds = [];
+
         foreach ($scope as $enrollment) {
             $household = $this->households->find($enrollment['hc']);
             $after = $enrollment['income_after'] ?? null;
@@ -387,8 +391,12 @@ class EnrollmentController extends Controller
                 if ($household['vill'] !== '') {
                     $villages[$household['vill']] = true;
                 }
+
+                $scopeHouseholds[$household['hc']] = $household;
             }
         }
+
+        $areaCounts = $this->households->areaCounts(array_values($scopeHouseholds));
 
         $counts = [];
 
@@ -409,6 +417,7 @@ class EnrollmentController extends Controller
             'incomesAfter' => $incomesAfter,
             'incomePairs' => $incomePairs,
             'villages' => array_keys($villages),
+            'areaCounts' => $areaCounts,
             'statuses' => EnrollmentRepository::STATUSES,
             'statusClass' => EnrollmentRepository::STATUS_CLASS,
             'activities' => $this->activities->all(),

@@ -63,6 +63,19 @@
             </div>
             <div class="tile-ic"><x-icon name="box" :size="16" :stroke="2" /></div>
         </div>
+
+        {{-- พื้นที่ครอบคลุมทั้งทะเบียน — นับแบบไม่ซ้ำตามสายเต็ม จังหวัด›อำเภอ›ตำบล›หมู่บ้าน
+             (ชื่อหมู่บ้าน/ตำบลซ้ำกันได้ข้ามอำเภอ ถ้านับแค่ชื่อจะได้น้อยกว่าจริง) --}}
+        <div class="tile">
+            <div class="tl">พื้นที่ครอบคลุม</div>
+            <div class="tv">{{ Thai::fmt($areaCounts['vill']) }}<small> หมู่บ้าน</small></div>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:9px">
+                <span class="bg">จังหวัด <b>{{ Thai::fmt($areaCounts['prov']) }}</b></span>
+                <span class="bg">อำเภอ <b>{{ Thai::fmt($areaCounts['dist']) }}</b></span>
+                <span class="bg">ตำบล <b>{{ Thai::fmt($areaCounts['tam']) }}</b></span>
+            </div>
+            <div class="tile-ic"><x-icon name="map" :size="16" :stroke="2" /></div>
+        </div>
     </div>
 
     <div class="grid2" style="margin-bottom:16px">

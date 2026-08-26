@@ -199,8 +199,8 @@ class ActivityRepository
         return $out;
     }
 
-    public function nextPa(int $fy): string
+    public function nextPa(int $fy, ?int $programId = null): string
     {
-        return Activity::nextPa($fy);
+        return Activity::nextPa($fy, $programId);
     }
 }

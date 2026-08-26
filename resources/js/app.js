@@ -755,10 +755,45 @@ function initHouseholdForm() {
         if (!hit) return;
 
         applyKnown(hit);
-        toast('เติมข้อมูลทั่วไปให้แล้ว', hit.hc + ' — ตรวจความถูกต้อง แล้วเลือกกิจกรรมด้านล่าง', 'ok');
+
+        /* จำไว้ว่าหมายถึงครัวเรือนหลังไหน — ฝั่งเซิร์ฟเวอร์จะได้ไม่สร้างรายการใหม่ */
+        const hidden = $('#hhExistingHc');
+
+        if (hidden) hidden.value = hit.hc;
+
+        markUsingExisting(hit);
+        toast('ใช้ครัวเรือนเดิม ' + hit.hc, 'กดบันทึกจะเพิ่มเฉพาะกิจกรรม ไม่สร้างรายการใหม่', 'ok');
     });
 
-    nameInput?.addEventListener('input', lookupName);
+    /** แสดงให้เห็นชัดว่ากำลังจะบันทึกทับครัวเรือนเดิม ไม่ใช่สร้างใหม่ */
+    function markUsingExisting(hit) {
+        const submit = form.querySelector('.dw-f .btn.pri');
+
+        if (submit) {
+            submit.innerHTML =
+                `${svg('chk', 15, 2.4)} บันทึกการเข้าร่วมของ ${esc(hit.hc)}`;
+        }
+    }
+
+    /** เลิกผูกกับครัวเรือนเดิม — กลับไปโหมดสร้างรายการใหม่ */
+    function clearUsingExisting() {
+        const hidden = $('#hhExistingHc');
+
+        if (!hidden || !hidden.value) return;
+
+        hidden.value = '';
+
+        const submit = form.querySelector('.dw-f .btn.pri');
+
+        if (submit) submit.innerHTML = `${svg('chk', 15, 2.4)} บันทึกครัวเรือน`;
+    }
+
+    nameInput?.addEventListener('input', () => {
+        /* พิมพ์แก้ชื่อ = ไม่ได้หมายถึงคนที่เลือกไว้แล้ว ต้องล้างการผูกทิ้ง
+           ไม่งั้นจะไปบันทึกให้ครัวเรือนผิดคนโดยที่หน้าจอไม่บอกอะไร */
+        clearUsingExisting();
+        lookupName();
+    });
     nameInput?.addEventListener('change', lookupName);
     lookupName();
 }

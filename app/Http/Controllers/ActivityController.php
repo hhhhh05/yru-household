@@ -56,7 +56,7 @@ class ActivityController extends Controller
         $fiscalYear = $program->fiscal_year;
 
         $activity = Activity::create($this->onlyExistingColumns([
-            'pa' => Activity::nextPa($fiscalYear),
+            'pa' => Activity::nextPa($fiscalYear, $program->id),
             'program_id' => $program->id,
             'fiscal_year' => $fiscalYear,
             'name' => trim($v['name']),

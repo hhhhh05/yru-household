@@ -132,6 +132,19 @@
             <div class="tile-ic"><x-icon name="link" :size="16" :stroke="2" /></div>
         </div>
 
+        {{-- พื้นที่ครอบคลุม — นับแบบไม่ซ้ำจากครัวเรือนที่อยู่ในขอบเขตที่กำลังดู
+             ตัวเลขนับตาม «สายเต็ม» จังหวัด›อำเภอ›ตำบล›หมู่บ้าน เพราะชื่อซ้ำกันได้ข้ามอำเภอ --}}
+        <div class="tile">
+            <div class="tl">พื้นที่ครอบคลุม</div>
+            <div class="tv">{{ Thai::fmt($areaCounts['vill']) }}<small> หมู่บ้าน</small></div>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:9px">
+                <span class="bg">จังหวัด <b>{{ Thai::fmt($areaCounts['prov']) }}</b></span>
+                <span class="bg">อำเภอ <b>{{ Thai::fmt($areaCounts['dist']) }}</b></span>
+                <span class="bg">ตำบล <b>{{ Thai::fmt($areaCounts['tam']) }}</b></span>
+            </div>
+            <div class="tile-ic"><x-icon name="map" :size="16" :stroke="2" /></div>
+        </div>
+
         <div class="tile">
             <div class="tl">{{ $pa ? 'งบเฉลี่ย/ครัวเรือน' : 'ครัวเรือนไม่ซ้ำ' }}</div>
             <div class="tv">

@@ -81,6 +81,28 @@ class HouseholdController extends Controller
         $areaCode = $data['area_code'];
         unset($data['area_code']);
 
+        /* ชื่อนี้มีอยู่ในทะเบียนแล้วหรือยัง
+           ถ้ามี จะไม่สร้างครัวเรือนซ้ำ — บันทึกแค่การเข้าร่วมกิจกรรมให้คนเดิม
+           และไม่ไปแก้ที่อยู่/เบอร์/รายได้ของเขาด้วย เพราะหน้านี้คือหน้า «เพิ่ม» ไม่ใช่ «แก้ไข» */
+        if ($existing = $this->findExistingHousehold($request, $data['full_name'])) {
+            $enrollToast = $this->enrollFromForm($request, $existing);
+
+            $toasts = [[
+                'title' => 'ใช้ครัวเรือนเดิม ไม่ได้สร้างรายการใหม่',
+                'msg' => $existing->fullName().' · '.$existing->hc
+                    .' มีอยู่ในทะเบียนแล้ว'.($enrollToast ? '' : ' — และยังไม่ได้เลือกกิจกรรม จึงไม่มีอะไรถูกบันทึก'),
+                'kind' => $enrollToast ? 'ok' : 'warn',
+            ]];
+
+            if ($enrollToast) {
+                $toasts[] = $enrollToast;
+            }
+
+            return redirect()
+                ->route('households.index', ['q' => $existing->hc])
+                ->with('toasts', $toasts);
+        }
+
         $data['hc'] = Household::nextHc($areaCode);
         $household = Household::create($data);
 
@@ -97,6 +119,43 @@ class HouseholdController extends Controller
         return redirect()
             ->route('households.index', ['sort' => 'hc', 'dir' => -1])
             ->with('toasts', $toasts);
+    }
+
+    /**
+     * หาครัวเรือนเดิมที่ตรงกับชื่อที่กรอกมา
+     *
+     * ลำดับการตัดสิน
+     *   1. ผู้ใช้กดปุ่มเลือกครัวเรือนจากกล่อง «พบชื่อนี้ในฐานข้อมูลแล้ว» → ใช้รหัสนั้นตรง ๆ
+     *   2. ไม่ได้กด แต่ชื่อไปตรงกับครัวเรือนเดียวพอดี → ใช้ครัวเรือนนั้น
+     *   3. ชื่อซ้ำกันหลายครัวเรือน → ไม่เดาให้ ให้ผู้ใช้ระบุเองว่าหลังไหน
+     *
+     * เทียบชื่อแบบตัดช่องว่างออก เพราะคนกรอกเว้นวรรคไม่เท่ากัน
+     */
+    private function findExistingHousehold(Request $request, string $fullName): ?Household
+    {
+        $hc = trim((string) $request->input('existing_hc'));
+
+        if ($hc !== '') {
+            return Household::where('hc', $hc)->first();
+        }
+
+        $key = preg_replace('/\s+/u', '', $fullName);
+
+        if ($key === '') {
+            return null;
+        }
+
+        $matches = Household::whereRaw("REPLACE(full_name, ' ', '') = ?", [$key])->get();
+
+        if ($matches->count() > 1) {
+            throw ValidationException::withMessages([
+                'fullname' => 'ชื่อนี้มีอยู่ '.$matches->count().' ครัวเรือน ('
+                    .$matches->pluck('hc')->implode(' · ')
+                    .') — กดปุ่มเลือกครัวเรือนในกล่องด้านบนก่อน ระบบจะได้รู้ว่าหมายถึงหลังไหน',
+            ]);
+        }
+
+        return $matches->first();
     }
 
     /**

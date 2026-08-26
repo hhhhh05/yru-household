@@ -130,6 +130,61 @@ class HouseholdRepository
         return $out;
     }
 
+    /**
+     * นับพื้นที่แบบไม่ซ้ำ — จังหวัด · อำเภอ · ตำบล · หมู่บ้าน
+     *
+     * นับตาม «สายเต็ม» (จังหวัด › อำเภอ › ตำบล › หมู่บ้าน+หมู่) ไม่ใช่ชื่อเดี่ยว
+     * เพราะชื่อตำบลและหมู่บ้านซ้ำกันได้ข้ามอำเภอ ถ้านับเฉพาะชื่อจะได้ตัวเลขต่ำกว่าจริง
+     * ชื่อหมู่บ้านตัดสระ/วรรณยุกต์ซ้ำก่อน (Thai::dedup) เพื่อไม่ให้สะกดต่างกันนิดเดียวกลายเป็นคนละแห่ง
+     *
+     * @param  array<int, array<string, mixed>>|null  $rows  ไม่ระบุ = ทั้งทะเบียน
+     * @return array{prov:int, dist:int, tam:int, vill:int}
+     */
+    public function areaCounts(?array $rows = null): array
+    {
+        $bucket = ['prov' => [], 'dist' => [], 'tam' => [], 'vill' => []];
+
+        foreach ($rows ?? $this->all() as $household) {
+            $prov = trim((string) ($household['prov'] ?? ''));
+            $dist = trim((string) ($household['dist'] ?? ''));
+            $tam = trim((string) ($household['tam'] ?? ''));
+            $vill = Thai::dedup(trim((string) ($household['vill'] ?? '')));
+            $moo = trim((string) ($household['moo'] ?? ''));
+
+            /* ไม่มีข้อมูลพื้นที่เลย → ไม่นับ ดีกว่านับเป็นพื้นที่ปลอม 1 แห่ง */
+            if ($prov === '') {
+                continue;
+            }
+
+            $bucket['prov'][$prov] = true;
+
+            if ($dist === '') {
+                continue;
+            }
+
+            $bucket['dist'][$prov.'›'.$dist] = true;
+
+            if ($tam === '') {
+                continue;
+            }
+
+            $bucket['tam'][$prov.'›'.$dist.'›'.$tam] = true;
+
+            if ($vill === '' && $moo === '') {
+                continue;
+            }
+
+            $bucket['vill'][$prov.'›'.$dist.'›'.$tam.'›'.$vill.'#'.$moo] = true;
+        }
+
+        return [
+            'prov' => count($bucket['prov']),
+            'dist' => count($bucket['dist']),
+            'tam' => count($bucket['tam']),
+            'vill' => count($bucket['vill']),
+        ];
+    }
+
     /** @return array<string, int> */
     public function countByTambon(): array
     {

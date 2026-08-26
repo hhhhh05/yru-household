@@ -31,6 +31,7 @@ class DashboardController extends Controller
             'budgetByYear' => $budgetByYear,
             'maxYearBudget' => max($budgetByYear ?: [1]),
             'villages' => $villages,
+            'areaCounts' => $households->areaCounts(),
             'maxVillage' => max(array_column($villages, 'n') ?: [1]),
             'activities' => $activities->all(),
             'issues' => $quality->issues(),

@@ -55,7 +55,7 @@
             <div class="f">
                 <label>รหัส PA</label>
                 <input name="pa_display" value="{{ $editing ? $activity['pa'] : '' }}" placeholder="ออกให้อัตโนมัติ" readonly>
-                <span class="hint">LP + ปีงบ 2 หลัก + ลำดับ 3 หลัก</span>
+                <span class="hint">LP + ปีงบ 2 หลัก + ลำดับโครงการ 2 หลัก + ลำดับกิจกรรม 2 หลัก · เช่น LP690101</span>
             </div>
 
             <div class="f {{ $err('fy') }}">

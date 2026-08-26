@@ -8,7 +8,7 @@
             <h2>โครงการ / กิจกรรม</h2>
             <p>แบ่งเป็น ปีงบประมาณ → โครงการหลัก → กิจกรรม ·
                 {{ Thai::fmt($totalCount) }} กิจกรรม · งบรวม {{ Thai::fmt($totalBudget) }} บาท ·
-                รหัส PA = LP + ปีงบ + ลำดับ</p>
+                รหัส PA = LP + ปีงบ + ลำดับโครงการ + ลำดับกิจกรรม</p>
         </div>
 
         <a class="btn out" href="{{ route('export', 'activities') }}">
