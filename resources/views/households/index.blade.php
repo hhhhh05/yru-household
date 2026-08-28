@@ -225,6 +225,14 @@
                         </td>
                         <td>
                             <div class="rowacts">
+                                @if (trim((string) $h['hc']) === '')
+                                    {{-- ครัวเรือนที่ไม่มีรหัส HC — ทุกลิงก์ในระบบอ้างถึงครัวเรือนด้วย HC
+                                         ถ้าปล่อยให้สร้างลิงก์จะพังทั้งหน้า จึงแสดงเป็นคำเตือนแทน --}}
+                                    <span class="bg b-crit"
+                                          data-tip="<b>ไม่มีรหัส HC</b>แถวนี้เปิดดู/แก้ไข/ลบไม่ได้ ต้องเติมรหัสในฐานข้อมูลก่อน">
+                                        <x-icon name="warn" :size="11" :stroke="2.4" /> ไม่มีรหัส HC
+                                    </span>
+                                @else
                                 <a class="ia" href="{{ route('households.show', $h['hc']) }}" title="ดูรายละเอียด">
                                     <x-icon name="eye" :size="15" :stroke="2" />
                                 </a>
@@ -248,6 +256,7 @@
                                             <x-icon name="trash" :size="15" :stroke="2" />
                                         </button>
                                     </form>
+                                @endif
                                 @endif
                             </div>
                         </td>

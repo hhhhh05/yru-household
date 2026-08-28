@@ -422,9 +422,12 @@
                         </td>
                         <td>
                             <div class="rowacts">
-                                <a class="ia" href="{{ route('households.show', $e['hc']) }}" title="ดูรายละเอียดครัวเรือน">
-                                    <x-icon name="eye" :size="15" :stroke="2" />
-                                </a>
+                                {{-- ครัวเรือนที่ไม่มีรหัส HC สร้างลิงก์ไม่ได้ — ถ้าฝืนสร้างจะพังทั้งหน้า --}}
+                                @if (trim((string) $e['hc']) !== '')
+                                    <a class="ia" href="{{ route('households.show', $e['hc']) }}" title="ดูรายละเอียดครัวเรือน">
+                                        <x-icon name="eye" :size="15" :stroke="2" />
+                                    </a>
+                                @endif
                                 <form method="POST" action="{{ route('enrollments.destroy', ['id' => $e['id']] + qs()) }}" class="f-inline">
                                     @csrf
                                     @method('DELETE')
@@ -474,9 +477,11 @@
                         <span class="code" style="font-size:12.5px">{{ $e['hc'] }}</span>
                         <span class="bg {{ $statusClass[$e['status']] ?? '' }}">{{ $e['status'] }}</span>
                         <span style="flex:1"></span>
-                        <a class="ia" href="{{ route('households.show', $e['hc']) }}" aria-label="ดูรายละเอียด">
-                            <x-icon name="eye" :size="16" :stroke="2" />
-                        </a>
+                        @if (trim((string) $e['hc']) !== '')
+                            <a class="ia" href="{{ route('households.show', $e['hc']) }}" aria-label="ดูรายละเอียด">
+                                <x-icon name="eye" :size="16" :stroke="2" />
+                            </a>
+                        @endif
                     </div>
                     <div class="mc-name">{{ $e['h']['name'] }}</div>
                     <div class="mc-meta">บ้านเลขที่ {{ $e['h']['house'] }} · {{ $e['h']['vill'] }}
