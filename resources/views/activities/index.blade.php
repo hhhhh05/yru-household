@@ -19,7 +19,13 @@
         </a>
     </div>
 
-    <div class="card">
+    {{-- กรองอยู่หรือเปล่า — ใช้ทั้งปุ่มล้างตัวกรองและข้อความใต้การ์ดสรุป
+         ต้องประกาศก่อนแถบตัวกรอง เพราะปุ่มล้างอยู่ในแถบนั้น --}}
+    @php $filtering = $fy !== '' || $q !== '' || $pg !== '' || $pa !== '' || $unit !== ''; @endphp
+
+    {{-- ------------------------------------------------------- แถบตัวกรอง
+         วางไว้บนสุด ตัวเลขในการ์ดสรุปด้านล่างจะขยับตามที่กรองไว้ --}}
+    <div class="card" style="margin-bottom:14px">
         @php
             /* ตัวเลือกโครงการหลัก — ถ้าเลือกปีงบไว้ ให้เหลือเฉพาะโครงการของปีนั้น */
             $programChoices = [];
@@ -36,8 +42,6 @@
         @endphp
 
         <form method="GET" action="{{ route('activities.index') }}" class="tbar js-auto">
-            <input type="hidden" name="fy" value="{{ $fy }}">
-
             <div class="fsearch {{ $q ? 'has' : '' }}">
                 <x-icon name="search" :size="15" :stroke="2.2" />
                 <input name="q" class="js-search" data-autofocus-end value="{{ $q }}"
@@ -46,6 +50,15 @@
                     <x-icon name="x" :size="14" :stroke="2.4" />
                 </a>
             </div>
+
+            {{-- ปีงบเป็นช่องเลือกเหมือนตัวกรองอื่น (เดิมเป็นปุ่มแท็บแยกอยู่ท้ายแถบ)
+                 เปลี่ยนปีงบแล้วโครงการ/กิจกรรมที่ค้างอยู่ ฝั่งเซิร์ฟเวอร์จะล้างให้เองถ้าคนละปี --}}
+            <select class="sel" name="fy">
+                <option value="">ทุกปีงบประมาณ</option>
+                @foreach ($fiscalYears as $year)
+                    <option value="{{ $year }}" @selected($fy === (string) $year)>ปีงบ {{ $year }}</option>
+                @endforeach
+            </select>
 
             <select class="sel" name="pg">
                 <option value="">ทุกโครงการหลัก</option>
@@ -56,17 +69,100 @@
                 @endforeach
             </select>
 
-            {{-- เปลี่ยนปีงบ ต้องล้างตัวกรองโครงการหลักด้วย ไม่งั้นจะกรองข้ามปีจนไม่เหลือรายการ --}}
-            <div class="seg">
-                <a class="{{ $fy === '' ? 'on' : '' }}" href="{{ route('activities.index', qs(['fy' => '', 'pg' => ''])) }}">ทุกปีงบ</a>
-                @foreach ($fiscalYears as $year)
-                    <a class="{{ $fy === (string) $year ? 'on' : '' }}"
-                       href="{{ route('activities.index', qs(['fy' => $year, 'pg' => ''])) }}">{{ $year }}</a>
-                @endforeach
-            </div>
-        </form>
+            @php
+                /* ตัวเลือกกิจกรรม — แคบลงตามปีงบ / โครงการหลัก / คณะ ที่เลือกไว้แล้ว
+                   จะได้ไม่มีตัวเลือกที่เลือกแล้วผลลัพธ์ว่างเปล่า */
+                $activityChoices = array_values(array_filter($activities, function ($a) use ($fy, $pg, $unit) {
+                    if ($fy !== '' && (string) $a['fy'] !== $fy) {
+                        return false;
+                    }
 
-        {{-- ---------------------------------------------------------- ตาราง --}}
+                    if ($pg !== '' && (string) ($a['program_id'] ?? '') !== $pg) {
+                        return false;
+                    }
+
+                    return $unit === '' || trim((string) ($a['unit'] ?? '')) === trim($unit);
+                }));
+            @endphp
+
+            <select class="sel" name="pa">
+                <option value="">ทุกกิจกรรม ({{ count($activityChoices) }})</option>
+                @foreach ($activityChoices as $choice)
+                    <option value="{{ $choice['pa'] }}" @selected($pa === $choice['pa'])>
+                        {{ $choice['pa'] }} · {{ mb_strlen($choice['name']) > 52 ? mb_substr($choice['name'], 0, 52).'…' : $choice['name'] }}
+                    </option>
+                @endforeach
+            </select>
+
+            <select class="sel" name="unit">
+                <option value="">ทุกคณะ/หน่วยงาน</option>
+                @foreach ($units as $unitOption)
+                    <option value="{{ $unitOption }}" @selected($unit === $unitOption)>
+                        {{ mb_strlen($unitOption) > 44 ? mb_substr($unitOption, 0, 44).'…' : $unitOption }}
+                    </option>
+                @endforeach
+            </select>
+
+            {{-- ล้างตัวกรองทั้งหมดในคลิกเดียว — โผล่เฉพาะตอนที่กรองอยู่จริง --}}
+            @if ($filtering)
+                <a class="btn ghost sm" href="{{ route('activities.index') }}">
+                    <x-icon name="x" :size="14" :stroke="2.4" /> ล้างตัวกรอง
+                </a>
+            @endif
+        </form>
+    </div>
+
+    {{-- ------------------------------------------------------------- การ์ดสรุป
+         ตัวเลขทั้งหมดคิดตามตัวกรองที่เลือกอยู่ ไม่ใช่ทั้งระบบ
+         ถ้ากรองอยู่จะมีบรรทัดล่างบอกยอดรวมทั้งระบบไว้เทียบ --}}
+    <div class="tiles" style="grid-template-columns:repeat(auto-fit,minmax(190px,1fr));margin-bottom:14px">
+        <div class="tile">
+            <div class="tl">งบประมาณ</div>
+            {{-- แสดงจำนวนเงินเต็ม ไม่ย่อเป็น «ล.» — ตัวเลขยาวจึงลดขนาดฟอนต์ลงหน่อยกันตกบรรทัด --}}
+            <div class="tv money">{{ Thai::fmt($scopeBudget) }}<small> บาท</small></div>
+            <div class="td">
+                @if ($scopeCount)
+                    เฉลี่ย {{ Thai::fmt(round($scopeBudget / $scopeCount)) }} บาท/กิจกรรม
+                @else
+                    ไม่มีกิจกรรมในขอบเขตนี้
+                @endif
+            </div>
+            <div class="tile-ic"><x-icon name="cash" :size="16" :stroke="2" /></div>
+        </div>
+
+        <div class="tile">
+            <div class="tl">โครงการหลัก</div>
+            <div class="tv">{{ Thai::fmt($scopeProgramCount) }}</div>
+            <div class="td">
+                @if ($filtering)
+                    จากทั้งหมด {{ Thai::fmt($programCount) }} โครงการ
+                @else
+                    ใน {{ count($fiscalYears) }} ปีงบประมาณ
+                @endif
+            </div>
+            <div class="tile-ic"><x-icon name="box" :size="16" :stroke="2" /></div>
+        </div>
+
+        <div class="tile">
+            <div class="tl">กิจกรรม</div>
+            <div class="tv">{{ Thai::fmt($scopeCount) }}</div>
+            <div class="td">
+                @if ($filtering)
+                    จากทั้งหมด {{ Thai::fmt($totalCount) }} กิจกรรม
+                @elseif ($scopeUnlinkedCount)
+                    {{-- กิจกรรมที่ยังไม่ผูกโครงการหลัก ไม่ถูกนับในการ์ดโครงการ จึงต้องบอกให้เห็น --}}
+                    <span style="color:var(--critical-ink);font-weight:600">{{ $scopeUnlinkedCount }} กิจกรรม</span>
+                    ยังไม่ผูกโครงการหลัก
+                @else
+                    ผูกโครงการหลักครบทุกกิจกรรม
+                @endif
+            </div>
+            <div class="tile-ic"><x-icon name="link" :size="16" :stroke="2" /></div>
+        </div>
+    </div>
+
+    {{-- ---------------------------------------------------------- ตาราง --}}
+    <div class="card">
         <div class="tw">
             <table>
                 <thead>
@@ -104,7 +200,7 @@
                                 <b class="num" style="font-size:12px;font-weight:600">{{ Thai::fmt($program['budget']) }}</b>
                                 @if ($programId)
                                     <a class="btn ghost xs"
-                                       href="{{ route('activities.index', qs(['fy' => $year, 'pg' => $pg === (string) $programId ? '' : $programId])) }}">
+                                       href="{{ route('activities.index', qs(['fy' => $year, 'pa' => '', 'pg' => $pg === (string) $programId ? '' : $programId])) }}">
                                         {{ $pg === (string) $programId ? 'เลิกกรอง' : 'ดูเฉพาะนี้' }}
                                     </a>
                                 @endif

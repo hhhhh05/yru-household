@@ -99,6 +99,74 @@ class ActivityRepository
         return count($this->all());
     }
 
+    /**
+     * รายชื่อคณะ/หน่วยงานที่รับผิดชอบ ที่มีใช้จริงในข้อมูล
+     *
+     * ดึงจากกิจกรรมที่มีอยู่ ไม่ได้ฝังรายชื่อไว้ในโค้ด
+     * ตัวเลือกในช่องกรองจึงตรงกับของจริงเสมอ ไม่มีตัวเลือกที่กรองแล้วว่างเปล่า
+     *
+     * @return array<int, string>
+     */
+    public function units(): array
+    {
+        $units = [];
+
+        foreach ($this->all() as $activity) {
+            $unit = trim((string) ($activity['unit'] ?? ''));
+
+            if ($unit !== '') {
+                $units[$unit] = true;
+            }
+        }
+
+        $out = array_keys($units);
+        sort($out);
+
+        return $out;
+    }
+
+    /** จำนวนโครงการหลักทั้งหมด (ทุกปีงบ) */
+    public function programCount(): int
+    {
+        return Program::count();
+    }
+
+    /**
+     * จำนวนโครงการหลักแยกตามปีงบ
+     *
+     * @return array<int, int>  ปีงบ => จำนวนโครงการ
+     */
+    public function programCountByYear(): array
+    {
+        $out = [];
+
+        foreach ($this->programsByYear() as $year => $items) {
+            $out[$year] = count($items);
+        }
+
+        ksort($out);
+
+        return $out;
+    }
+
+    /**
+     * จำนวนกิจกรรมแยกตามปีงบ
+     *
+     * @return array<int, int>  ปีงบ => จำนวนกิจกรรม
+     */
+    public function activityCountByYear(): array
+    {
+        $out = [];
+
+        foreach ($this->all() as $activity) {
+            $out[$activity['fy']] = ($out[$activity['fy']] ?? 0) + 1;
+        }
+
+        ksort($out);
+
+        return $out;
+    }
+
     public function totalBudget(): int
     {
         return (int) array_sum(array_column($this->all(), 'budget'));
@@ -128,8 +196,13 @@ class ActivityRepository
     }
 
     /** @return array<int, array<string, mixed>> */
-    public function filter(?string $fy = null, ?string $q = null, ?string $programId = null): array
-    {
+    public function filter(
+        ?string $fy = null,
+        ?string $q = null,
+        ?string $programId = null,
+        ?string $pa = null,
+        ?string $unit = null,
+    ): array {
         $rows = $this->all();
 
         if ($fy) {
@@ -138,6 +211,15 @@ class ActivityRepository
 
         if ($programId) {
             $rows = array_filter($rows, fn ($p) => (string) ($p['program_id'] ?? '') === (string) $programId);
+        }
+
+        /* เลือกกิจกรรมเดียวด้วยรหัส PA */
+        if ($pa) {
+            $rows = array_filter($rows, fn ($p) => (string) $p['pa'] === (string) $pa);
+        }
+
+        if ($unit) {
+            $rows = array_filter($rows, fn ($p) => trim((string) ($p['unit'] ?? '')) === trim($unit));
         }
 
         if ($q = mb_strtolower(trim((string) $q))) {

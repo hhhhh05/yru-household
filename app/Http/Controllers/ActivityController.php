@@ -225,7 +225,42 @@ class ActivityController extends Controller
         $fy = (string) $request->query('fy', '');
         $q = (string) $request->query('q', '');
         $pg = (string) $request->query('pg', '');       // กรองเฉพาะโครงการหลักเดียว
-        $rows = $this->activities->filter($fy, $q, $pg);
+        $pa = (string) $request->query('pa', '');       // กรองเฉพาะกิจกรรมเดียว
+        $unit = (string) $request->query('unit', '');   // กรองตามคณะ/หน่วยงานที่รับผิดชอบ
+        /* เปลี่ยนปีงบแล้วโครงการหลักที่ค้างอยู่อาจเป็นของปีอื่น → ทิ้งไป
+           ไม่งั้นสองตัวกรองขัดกันเองจนตารางว่าง โดยผู้ใช้ไม่รู้สาเหตุ */
+        if ($fy && $pg) {
+            $stillValid = false;
+
+            foreach ($this->activities->programsByYear()[$fy] ?? [] as $item) {
+                if ((string) $item['id'] === $pg) {
+                    $stillValid = true;
+
+                    break;
+                }
+            }
+
+            if (! $stillValid) {
+                $pg = '';
+            }
+        }
+
+        /* กิจกรรมที่ค้างอยู่ต้องเข้ากับตัวกรองอื่นด้วย ไม่งั้นสองตัวกรองจะขัดกันเองจนไม่เหลือรายการ
+           โดยผู้ใช้ไม่รู้สาเหตุ (เช่นเลือกกิจกรรมไว้ แล้วไปสลับปีงบ) — ถ้าขัดกันให้ทิ้งกิจกรรมไป */
+        if ($pa) {
+            $current = $this->activities->find($pa);
+
+            $mismatch = ! $current
+                || ($fy && (string) $current['fy'] !== $fy)
+                || ($pg && (string) ($current['program_id'] ?? '') !== $pg)
+                || ($unit && trim((string) ($current['unit'] ?? '')) !== trim($unit));
+
+            if ($mismatch) {
+                $pa = '';
+            }
+        }
+
+        $rows = $this->activities->filter($fy, $q, $pg, $pa, $unit);
 
         $counts = [];
 
@@ -233,11 +268,24 @@ class ActivityController extends Controller
             $counts[$activity['pa']] = $this->enrollments->countForActivity($activity['pa']);
         }
 
+        /* สรุปตามขอบเขตที่กำลังดู (ตัวกรองปีงบ/คำค้น/โครงการ) ไม่ใช่ทั้งระบบ
+           โครงการนับจาก program_id ที่ปรากฏจริงในผลลัพธ์ — กิจกรรมที่ยังไม่ผูกโครงการ (id ว่าง) ไม่นับ
+           เพราะยังไม่ใช่โครงการ ถ้านับรวมจะได้ตัวเลขเกินจริง 1 */
+        $scopeProgramIds = array_filter(array_unique(array_column($rows, 'program_id')));
+
         return [
             'navKey' => 'pj',
             'fy' => $fy,
             'q' => $q,
             'pg' => $pg,
+            'pa' => $pa,
+            'unit' => $unit,
+            'units' => $this->activities->units(),
+            'scopeCount' => count($rows),
+            'scopeBudget' => (int) array_sum(array_column($rows, 'budget')),
+            'scopeProgramCount' => count($scopeProgramIds),
+            'scopeUnlinkedCount' => count(array_filter($rows, fn ($r) => empty($r['program_id']))),
+            'programCount' => $this->activities->programCount(),
             'rows' => $rows,
             'grouped' => $this->activities->groupByYear($rows),
             'tree' => $this->activities->groupByProgram($rows),

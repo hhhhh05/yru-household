@@ -49,6 +49,25 @@
 
                     $paYears = array_values(array_unique(array_column($paOptions, 'fy')));
                     sort($paYears);
+
+                    /* ช่องกรองพื้นที่ — แต่ละชั้นแคบลงตามชั้นบนที่เลือกไว้แล้ว
+                       จังหวัดยังแสดงครบเสมอ จะได้เปลี่ยนกลับได้ ไม่ตันอยู่ในจังหวัดเดียว */
+                    $fProv = $filters['prov'];
+                    $fDist = $filters['dist'];
+                    $fTam = $filters['tam'];
+
+                    $provOptions = array_values(array_unique(array_column($areaOptions, 'prov')));
+
+                    $distOptions = array_values(array_filter(array_unique(array_column(
+                        array_filter($areaOptions, fn ($a) => $fProv === '' || $a['prov'] === $fProv),
+                        'dist',
+                    )), fn ($d) => $d !== ''));
+
+                    $tamOptions = array_values(array_filter(array_unique(array_column(
+                        array_filter($areaOptions, fn ($a) => ($fProv === '' || $a['prov'] === $fProv)
+                            && ($fDist === '' || $a['dist'] === $fDist)),
+                        'tam',
+                    )), fn ($t) => $t !== ''));
                 @endphp
 
                 {{-- เลือกโครงการหลักก่อน แล้วค่อยเลือกกิจกรรมย่อยในโครงการนั้น
@@ -94,23 +113,59 @@
                             @endforeach
                         </select>
                     </div>
+
+                    {{-- ตัวกรองพื้นที่ อยู่ใต้โครงการ/กิจกรรม ในฟอร์มเดียวกัน
+                         flex-basis:100% บังคับให้ขึ้นบรรทัดใหม่เต็มความกว้าง --}}
+                    <div style="flex-basis:100%;display:flex;gap:12px;flex-wrap:wrap">
+                        <div class="f" style="flex:1;min-width:170px">
+                            <label><x-icon name="map" :size="13" :stroke="2.2" /> จังหวัด</label>
+                            <select name="prov">
+                                <option value="">ทุกจังหวัด</option>
+                                @foreach ($provOptions as $provOption)
+                                    <option value="{{ $provOption }}" @selected($fProv === $provOption)>จ.{{ $provOption }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+
+                        <div class="f" style="flex:1;min-width:170px">
+                            <label><x-icon name="map" :size="13" :stroke="2.2" /> อำเภอ</label>
+                            <select name="dist">
+                                <option value="">ทุกอำเภอ</option>
+                                @foreach ($distOptions as $distOption)
+                                    <option value="{{ $distOption }}" @selected($fDist === $distOption)>อ.{{ $distOption }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+
+                        <div class="f" style="flex:1;min-width:170px">
+                            <label><x-icon name="map" :size="13" :stroke="2.2" /> ตำบล</label>
+                            <select name="tam">
+                                <option value="">ทุกตำบล</option>
+                                @foreach ($tamOptions as $tamOption)
+                                    <option value="{{ $tamOption }}" @selected($fTam === $tamOption)>ต.{{ Thai::tamName($tamOption) }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                    </div>
+
+                    {{-- ฟอร์มนี้ส่งเฉพาะช่องของตัวเอง ตัวกรองอื่นจึงต้องพกไปด้วย
+                         ไม่งั้นเปลี่ยนโครงการหรือพื้นที่ทีไร คำค้น/สถานะ/การเรียงจะหายทุกครั้ง --}}
+                    <input type="hidden" name="q" value="{{ $filters['q'] }}">
+                    <input type="hidden" name="st" value="{{ $filters['st'] }}">
+                    <input type="hidden" name="vill" value="{{ $filters['vill'] }}">
+                    <input type="hidden" name="sort" value="{{ $filters['sort'] }}">
+                    <input type="hidden" name="dir" value="{{ $filters['dir'] }}">
+                    <input type="hidden" name="per" value="{{ $page['per'] }}">
                 </form>
 
-                @if ($activity)
-                    <div class="pick-meta">
-                        <span class="bg b-brand"><span class="code">{{ $activity['pa'] }}</span></span>
-                        <span class="bg">ปีงบ {{ $activity['fy'] }}</span>
-                        <span class="bg">งบ <b class="num">{{ Thai::fmt($activity['budget']) }}</b> บาท</span>
-                        <a class="btn out sm" href="{{ route('activities.edit', $activity['pa']) }}">
-                            <x-icon name="edit" :size="13" :stroke="2.2" /> แก้ไขกิจกรรม
-                        </a>
-                    </div>
-                @else
+                {{-- ตอนเลือกกิจกรรมแล้ว ไม่แสดงป้าย PA/ปีงบ/งบ และปุ่มแก้ไขกิจกรรมอีก
+                     รหัสกับชื่อกิจกรรมอยู่ในช่องเลือกด้านบนแล้ว --}}
+                @unless ($activity)
                     <div class="pick-meta">
                         <span class="bg">{{ Thai::fmt($totalActivities) }} กิจกรรม ·
                             {{ Thai::fmt($activeActivityCount) }} กิจกรรมที่มีผู้เข้าร่วม</span>
                     </div>
-                @endif
+                @endunless
             </div>
 
             @if ($activity)
@@ -121,13 +176,17 @@
         </div>
     </div>
 
+
     {{-- ------------------------------------------------------------- การ์ดสรุป --}}
     <div class="tiles" style="grid-template-columns:repeat(auto-fit,minmax(190px,1fr));margin-bottom:14px">
         <div class="tile">
-            <div class="tl">รายการลงทะเบียน</div>
+            <div class="tl">รายการลงทะเบียน{{ $narrowed ? ' (กรองอยู่)' : '' }}</div>
             <div class="tv">{{ Thai::fmt($scopeCount) }}</div>
             <div class="td">
                 {{ $pa ? 'ครัวเรือนไม่ซ้ำ '.$scopeUniqueHouseholds.' ราย' : 'ใน '.$scopeActivityCount.' กิจกรรม' }}
+                @if ($narrowed)
+                    · จากทั้งหมด {{ Thai::fmt($totalEnrollments) }}
+                @endif
             </div>
             <div class="tile-ic"><x-icon name="link" :size="16" :stroke="2" /></div>
         </div>
@@ -145,17 +204,28 @@
             <div class="tile-ic"><x-icon name="map" :size="16" :stroke="2" /></div>
         </div>
 
+        {{-- งบเฉลี่ย/ครัวเรือน คิดได้เฉพาะตอนดูทั้งกิจกรรม
+             ถ้ากรองพื้นที่/สถานะ/คำค้นเพิ่ม จำนวนคนจะไม่ครบ หารออกมาแล้วเกินจริง
+             กรณีนั้นจึงสลับไปแสดงจำนวนครัวเรือนไม่ซ้ำแทน --}}
+        @php $showBudgetPerHousehold = $pa && ! $narrowed; @endphp
+
         <div class="tile">
-            <div class="tl">{{ $pa ? 'งบเฉลี่ย/ครัวเรือน' : 'ครัวเรือนไม่ซ้ำ' }}</div>
+            <div class="tl">{{ $showBudgetPerHousehold ? 'งบเฉลี่ย/ครัวเรือน' : 'ครัวเรือนไม่ซ้ำ' }}</div>
             <div class="tv">
-                @if ($pa)
+                @if ($showBudgetPerHousehold)
                     {{ $scopeCount ? Thai::fmt(round($activity['budget'] / $scopeCount)) : '—' }}
                 @else
                     {{ Thai::fmt($scopeUniqueHouseholds) }}
                 @endif
             </div>
             <div class="td">
-                {{ $pa ? 'บาท จากงบ '.Thai::fmt($activity['budget']) : 'จากทะเบียน '.Thai::fmt($totalHouseholds).' ครัวเรือน' }}
+                @if ($showBudgetPerHousehold)
+                    บาท จากงบ {{ Thai::fmt($activity['budget']) }}
+                @elseif ($narrowed)
+                    ในผลลัพธ์ที่กรองอยู่ · ทั้งทะเบียน {{ Thai::fmt($totalHouseholds) }} ครัวเรือน
+                @else
+                    จากทะเบียน {{ Thai::fmt($totalHouseholds) }} ครัวเรือน
+                @endif
             </div>
             <div class="tile-ic"><x-icon name="cash" :size="16" :stroke="2" /></div>
         </div>
@@ -232,6 +302,10 @@
         <form method="GET" action="{{ route('enrollments.index') }}" class="tbar js-auto">
             <input type="hidden" name="pg" value="{{ $filters['pg'] }}">
             <input type="hidden" name="pa" value="{{ $pa }}">
+            {{-- ตัวกรองพื้นที่อยู่คนละฟอร์ม (ในการ์ดด้านบน) จึงต้องพกค่ามาด้วย --}}
+            <input type="hidden" name="prov" value="{{ $filters['prov'] }}">
+            <input type="hidden" name="dist" value="{{ $filters['dist'] }}">
+            <input type="hidden" name="tam" value="{{ $filters['tam'] }}">
             <input type="hidden" name="sort" value="{{ $filters['sort'] }}">
             <input type="hidden" name="dir" value="{{ $filters['dir'] }}">
             <input type="hidden" name="per" value="{{ $page['per'] }}">
@@ -259,7 +333,7 @@
                 @endforeach
             </select>
 
-            @if ($filters['q'] || $filters['st'] || $filters['vill'])
+            @if ($filters['q'] || $filters['st'] || $filters['vill'] || $filters['prov'] || $filters['dist'] || $filters['tam'])
                 <a class="btn ghost sm" href="{{ route('enrollments.index', ['pa' => $pa]) }}">ล้างตัวกรอง</a>
             @endif
 

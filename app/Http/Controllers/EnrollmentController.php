@@ -323,6 +323,39 @@ class EnrollmentController extends Controller
         return $out;
     }
 
+    /**
+     * ครัวเรือนที่มีการลงทะเบียนอย่างน้อย 1 รายการ (ไม่ซ้ำ)
+     *
+     * ใช้ทำตัวเลือกช่องกรองพื้นที่ — จำกัดได้ตามโครงการหลัก/กิจกรรม (ขั้นบนของตัวกรอง)
+     * แต่จงใจไม่คิดตามตัวกรองพื้นที่เอง ไม่งั้นพอเลือกจังหวัดแล้วจังหวัดอื่นจะหายจนเปลี่ยนกลับไม่ได้
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function enrolledHouseholds(string $programId = '', string $pa = ''): array
+    {
+        $out = [];
+
+        foreach ($this->enrollments->all() as $enrollment) {
+            if ($pa !== '' && $enrollment['pa'] !== $pa) {
+                continue;
+            }
+
+            if ($programId !== '') {
+                $activity = $this->activities->find($enrollment['pa']);
+
+                if ((string) ($activity['program_id'] ?? '') !== $programId) {
+                    continue;
+                }
+            }
+
+            if (! isset($out[$enrollment['hc']]) && $household = $this->households->find($enrollment['hc'])) {
+                $out[$enrollment['hc']] = $household;
+            }
+        }
+
+        return array_values($out);
+    }
+
     private function pageData(Request $request): array
     {
         $filters = [
@@ -331,6 +364,9 @@ class EnrollmentController extends Controller
             'q' => (string) $request->query('q', ''),
             'st' => (string) $request->query('st', ''),
             'vill' => (string) $request->query('vill', ''),
+            'prov' => (string) $request->query('prov', ''),
+            'dist' => (string) $request->query('dist', ''),
+            'tam' => (string) $request->query('tam', ''),
             'sort' => (string) $request->query('sort', 'hc'),
             'dir' => (int) $request->query('dir', 1),
         ];
@@ -352,18 +388,85 @@ class EnrollmentController extends Controller
 
         $activity = $filters['pa'] ? $this->activities->find($filters['pa']) : null;
 
+        /* ---------------------------------------------- ตัวกรองแบบเป็นขั้น ----
+           ลำดับขั้น: โครงการหลัก → กิจกรรม → จังหวัด → อำเภอ → ตำบล
+           ตัวเลือกพื้นที่จึงคิดจาก «ครัวเรือนที่อยู่ในโครงการ/กิจกรรมที่เลือกไว้» เท่านั้น
+           ไม่ใช่ทั้งระบบ — เลือกกิจกรรมแล้วจะเห็นเฉพาะพื้นที่ที่กิจกรรมนั้นลงจริง
+
+           จงใจไม่เอาตัวกรองพื้นที่มาคิดตัวเลือกของตัวเอง ไม่งั้นพอเลือกจังหวัดแล้ว
+           จังหวัดอื่นจะหายไปจนเปลี่ยนกลับไม่ได้ */
+        $areaPaths = $this->households->areaOptions(
+            $this->enrolledHouseholds($filters['pg'], $filters['pa'])
+        );
+
+        $matchesArea = fn (string $prov, string $dist, string $tam) => (bool) array_filter(
+            $areaPaths,
+            fn ($a) => ($prov === '' || $a['prov'] === $prov)
+                && ($dist === '' || $a['dist'] === $dist)
+                && ($tam === '' || $a['tam'] === $tam),
+        );
+
+        /* ล้างจากขั้นล่างขึ้นบน — ค่าที่ค้างอยู่แต่ไม่มีในขั้นบนที่เลือกใหม่ ต้องหลุดไป
+           ไม่งั้นตัวกรองขัดกันเองจนไม่เหลือรายชื่อ โดยผู้ใช้ไม่รู้สาเหตุ */
+        if ($filters['tam'] !== '' && ! $matchesArea($filters['prov'], $filters['dist'], $filters['tam'])) {
+            $filters['tam'] = '';
+        }
+
+        if ($filters['dist'] !== '' && ! $matchesArea($filters['prov'], $filters['dist'], '')) {
+            $filters['dist'] = '';
+        }
+
+        if ($filters['prov'] !== '' && ! $matchesArea($filters['prov'], '', '')) {
+            $filters['prov'] = '';
+        }
+
+
+        /* ตัวเลือกหมู่บ้าน = ขั้นสุดท้ายของสายตัวกรอง (โครงการ → กิจกรรม → จังหวัด → อำเภอ → ตำบล → หมู่บ้าน)
+           คิดจากขั้นบนเท่านั้น ไม่เอาหมู่บ้านที่เลือกอยู่มาคิดด้วย ไม่งั้นเหลือตัวเลือกเดียวจนสลับหมู่บ้านไม่ได้ */
+        $villages = [];
+
+        foreach ($this->enrolledHouseholds($filters['pg'], $filters['pa']) as $household) {
+            if ($filters['prov'] !== '' && trim((string) $household['prov']) !== $filters['prov']) {
+                continue;
+            }
+
+            if ($filters['dist'] !== '' && trim((string) $household['dist']) !== $filters['dist']) {
+                continue;
+            }
+
+            if ($filters['tam'] !== '' && trim((string) $household['tam']) !== $filters['tam']) {
+                continue;
+            }
+
+            if ($household['vill'] !== '') {
+                $villages[$household['vill']] = true;
+            }
+        }
+
+        ksort($villages);
+
+        /* หมู่บ้านที่ค้างอยู่ไม่มีในขั้นบนที่เลือกใหม่ → ล้างทิ้ง (ขั้นสุดท้ายของสาย) */
+        if ($filters['vill'] !== '' && ! isset($villages[$filters['vill']])) {
+            $filters['vill'] = '';
+        }
+
         $rows = $this->enrollments->rows($filters);
         $page = Paginate::make($rows, (int) $request->query('page', 1), (int) $request->query('per', 25));
 
-        /* ขอบเขตข้อมูลสำหรับการ์ดสรุป: เฉพาะกิจกรรมที่เลือก (หรือทั้งระบบ) */
-        $scope = $filters['pa']
-            ? $this->enrollments->forActivity($filters['pa'])
-            : $this->enrollments->all();
+        /* ขอบเขตข้อมูลสำหรับการ์ดสรุป = ผลลัพธ์หลังกรองทั้งหมด (ก่อนแบ่งหน้า)
+           ใช้ $rows ตัวเดียวกับตาราง ตัวเลขในการ์ดจึงตรงกับที่เห็นในตารางเสมอ
+           ไม่ใช้ทั้งระบบหรือทั้งกิจกรรม ไม่งั้นกรองพื้นที่แล้วการ์ดจะไม่ขยับ */
+        $scope = $rows;
+
+        /* กรองให้แคบกว่า «ทั้งกิจกรรม» หรือยัง — ใช้ตัดสินว่าจะโชว์งบเฉลี่ย/ครัวเรือนได้ไหม
+           งบเป็นของทั้งกิจกรรม ถ้าเอามาหารเฉพาะคนที่กรองเหลือ ตัวเลขจะเกินจริง */
+        $narrowed = $filters['q'] !== '' || $filters['st'] !== '' || $filters['vill'] !== ''
+            || $filters['prov'] !== '' || $filters['dist'] !== '' || $filters['tam'] !== '';
 
         $incomes = [];
         $incomesAfter = [];
         $incomePairs = [];        // เฉพาะรายที่มีทั้งรายได้ตั้งต้นและหลังจบ — ใช้คิดส่วนต่าง
-        $villages = [];
+
 
         /* ครัวเรือนที่อยู่ในขอบเขตที่กำลังดู — ใช้นับพื้นที่ครอบคลุม
            เก็บทีละรายซ้ำไม่ได้ เพราะครัวเรือนเดียวเข้าได้หลายกิจกรรม จึงคีย์ด้วย HC */
@@ -388,10 +491,6 @@ class EnrollmentController extends Controller
                     }
                 }
 
-                if ($household['vill'] !== '') {
-                    $villages[$household['vill']] = true;
-                }
-
                 $scopeHouseholds[$household['hc']] = $household;
             }
         }
@@ -410,6 +509,7 @@ class EnrollmentController extends Controller
             'activity' => $activity,
             'page' => $page,
             'scope' => $scope,
+            'narrowed' => $narrowed,
             'scopeUniqueHouseholds' => count(array_unique(array_column($scope, 'hc'))),
             'scopeActivityCount' => count(array_unique(array_column($scope, 'pa'))),
             'statusCounts' => $this->enrollments->statusCounts($scope),
@@ -418,6 +518,9 @@ class EnrollmentController extends Controller
             'incomePairs' => $incomePairs,
             'villages' => array_keys($villages),
             'areaCounts' => $areaCounts,
+            /* ตัวเลือกช่องกรองพื้นที่ — เอาจากครัวเรือนที่มีการลงทะเบียนจริงเท่านั้น
+               ไม่ใช่ทั้งทะเบียน จะได้ไม่มีตัวเลือกที่เลือกแล้วไม่เหลือรายชื่อ */
+            'areaOptions' => $areaPaths,
             'statuses' => EnrollmentRepository::STATUSES,
             'statusClass' => EnrollmentRepository::STATUS_CLASS,
             'activities' => $this->activities->all(),

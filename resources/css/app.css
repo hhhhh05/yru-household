@@ -177,6 +177,8 @@ svg{flex:none}
 .tile .tl{font-size:12.5px;color:var(--ink-3);display:flex;align-items:center;gap:7px}
 .tile .tv{font-size:29px;font-weight:600;letter-spacing:-.03em;margin-top:7px;line-height:1.1}
 .tile .tv small{font-size:14px;font-weight:500;color:var(--ink-3);letter-spacing:0}
+/* จำนวนเงินแบบเต็ม (ไม่ย่อเป็น «ล.») ตัวเลขยาวกว่าปกติมาก จึงลดขนาดลงกันตกบรรทัด */
+.tile .tv.money{font-size:26px;letter-spacing:-.02em}
 .tile .td{font-size:12px;margin-top:5px;color:var(--ink-3);display:flex;align-items:center;gap:5px}
 .tile .td b{font-weight:600}
 .up{color:var(--good-ink)}
@@ -457,6 +459,7 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:16px 0}
   .page-head h2{font-size:18px}
   .tiles{grid-template-columns:1fr 1fr;gap:10px}
   .tile .tv{font-size:24px}
+  .tile .tv.money{font-size:20px}
   .tbar{padding:11px 12px;gap:8px}
   .fsearch{max-width:none;flex-basis:100%}
   .sel{max-width:none;flex:1 1 44%}

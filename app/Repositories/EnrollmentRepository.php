@@ -141,8 +141,25 @@ class EnrollmentRepository
         $q = mb_strtolower(trim((string) ($f['q'] ?? '')));
         $st = $f['st'] ?? '';
         $vill = $f['vill'] ?? '';
+        $prov = trim((string) ($f['prov'] ?? ''));
+        $dist = trim((string) ($f['dist'] ?? ''));
+        $tam = trim((string) ($f['tam'] ?? ''));
 
-        $rows = array_values(array_filter($rows, function ($e) use ($pg, $pa, $q, $st, $vill) {
+        $rows = array_values(array_filter($rows, function ($e) use ($pg, $pa, $q, $st, $vill, $prov, $dist, $tam) {
+            /* พื้นที่ — เทียบแบบตัดช่องว่างหน้าหลัง กันข้อมูลที่มีเว้นวรรคเกิน
+               ชื่ออำเภอ/จังหวัดมาจากตำบลของครัวเรือน จึงไม่มีทางขัดกับตำบลเอง */
+            if ($prov && trim((string) ($e['h']['prov'] ?? '')) !== $prov) {
+                return false;
+            }
+
+            if ($dist && trim((string) ($e['h']['dist'] ?? '')) !== $dist) {
+                return false;
+            }
+
+            if ($tam && trim((string) ($e['h']['tam'] ?? '')) !== $tam) {
+                return false;
+            }
+
             /* กรองตามโครงการหลักก่อน แล้วค่อยกรองกิจกรรมย่อยในโครงการนั้น */
             if ($pg && (string) ($e['p']['program_id'] ?? '') !== (string) $pg) {
                 return false;

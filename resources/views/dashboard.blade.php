@@ -55,11 +55,49 @@
             </div>
         </div>
 
+        @php
+            /* ช่วงปีงบเอาจากข้อมูลจริง ไม่ฝังเลขไว้ในหน้า ไม่งั้นพอเพิ่มปีงบใหม่ข้อความจะผิด */
+            $budgetYears = array_keys($budgetByYear);
+            sort($budgetYears);
+        @endphp
+
         <div class="tile">
-            <div class="tl">งบประมาณรวม 3 ปีงบ</div>
-            <div class="tv">{{ Thai::compact($budget) }}<small> บาท</small></div>
+            <div class="tl">งบประมาณรวม {{ count($budgetYears) }} ปีงบ</div>
+            {{-- แสดงจำนวนเงินเต็ม ไม่ย่อเป็น «ล.» --}}
+            <div class="tv money">{{ Thai::fmt($budget) }}<small> บาท</small></div>
             <div class="td">
-                2567–2569 · เฉลี่ย {{ Thai::fmt(round($budget / max(1, $activityCount))) }} บาท/กิจกรรม
+                @if ($budgetYears)
+                    {{ $budgetYears[0] }}@if (count($budgetYears) > 1)–{{ end($budgetYears) }}@endif ·
+                @endif
+                เฉลี่ย {{ Thai::fmt(round($budget / max(1, $activityCount))) }} บาท/กิจกรรม
+            </div>
+            <div class="tile-ic"><x-icon name="box" :size="16" :stroke="2" /></div>
+        </div>
+
+        {{-- โครงการหลัก / กิจกรรม — ป้ายย่อยแยกตามปีงบ ใช้ปีงบของ «โครงการ» เป็นแกน
+             (กิจกรรมยึดปีงบตามโครงการแม่อยู่แล้ว จึงไม่มีปีที่ขัดกัน) --}}
+        <div class="tile">
+            <div class="tl">โครงการ · กิจกรรม</div>
+            <div class="tv">{{ Thai::fmt($programCount) }}<small> โครงการ</small>
+                <span style="opacity:.4;font-weight:400"> / </span>{{ Thai::fmt($activityCount) }}<small> กิจกรรม</small></div>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:9px">
+                @php
+                    /* รวมปีงบจากทั้งสองฝั่ง — ถ้าปีไหนมีกิจกรรมแต่ยังไม่มีโครงการ (หรือกลับกัน)
+                       ก็ยังต้องโผล่ในป้าย ไม่งั้นตัวเลขรวมกับป้ายย่อยจะบวกไม่ตรงกัน */
+                    $paYearList = array_unique(array_merge(
+                        array_keys($programCountByYear),
+                        array_keys($activityCountByYear),
+                    ));
+                    sort($paYearList);
+                @endphp
+
+                @forelse ($paYearList as $year)
+                    <span class="bg" data-tip="<b>ปีงบ {{ $year }}</b>{{ $programCountByYear[$year] ?? 0 }} โครงการ · {{ $activityCountByYear[$year] ?? 0 }} กิจกรรม">
+                        {{ $year }} <b>{{ $programCountByYear[$year] ?? 0 }}</b>/<b>{{ $activityCountByYear[$year] ?? 0 }}</b>
+                    </span>
+                @empty
+                    <span class="t-empty"></span>
+                @endforelse
             </div>
             <div class="tile-ic"><x-icon name="box" :size="16" :stroke="2" /></div>
         </div>

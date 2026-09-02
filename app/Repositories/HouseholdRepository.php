@@ -188,6 +188,41 @@ class HouseholdRepository
         ];
     }
 
+    /**
+     * รายการพื้นที่ที่มีใช้จริง สำหรับทำช่องกรอง จังหวัด/อำเภอ/ตำบล
+     *
+     * คืนเป็น «สายพื้นที่» ไม่ซ้ำ เรียงตามชื่อ เพื่อให้หน้าเว็บกรองต่อเป็นชั้น ๆ ได้
+     * ดึงจากข้อมูลจริงเท่านั้น ตัวเลือกจึงไม่มีอันที่เลือกแล้วผลลัพธ์ว่าง
+     *
+     * @param  array<int, array<string, mixed>>|null  $rows  ไม่ระบุ = ทั้งทะเบียน
+     * @return array<int, array{prov:string, dist:string, tam:string}>
+     */
+    public function areaOptions(?array $rows = null): array
+    {
+        $seen = [];
+
+        foreach ($rows ?? $this->all() as $household) {
+            $prov = trim((string) ($household['prov'] ?? ''));
+
+            if ($prov === '') {
+                continue;
+            }
+
+            $dist = trim((string) ($household['dist'] ?? ''));
+            $tam = trim((string) ($household['tam'] ?? ''));
+
+            $seen[$prov.'›'.$dist.'›'.$tam] = ['prov' => $prov, 'dist' => $dist, 'tam' => $tam];
+        }
+
+        $out = array_values($seen);
+
+        usort($out, fn ($a, $b) => Thai::compare($a['prov'], $b['prov'])
+            ?: (Thai::compare($a['dist'], $b['dist'])
+            ?: Thai::compare($a['tam'], $b['tam'])));
+
+        return $out;
+    }
+
     /** @return array<string, int> */
     public function countByTambon(): array
     {
