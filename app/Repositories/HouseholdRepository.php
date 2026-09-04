@@ -189,6 +189,70 @@ class HouseholdRepository
     }
 
     /**
+     * จำนวนครัวเรือนแยกตามชั้นพื้นที่ — จังหวัด · อำเภอ · ตำบล
+     *
+     * ใช้ทำกราฟแท่งในหน้าภาพรวม เรียงจากมากไปน้อย
+     * อำเภอกำกับด้วยจังหวัด และตำบลกำกับด้วยอำเภอ เพราะชื่อซ้ำกันได้ข้ามพื้นที่
+     * ครัวเรือนที่ยังไม่ระบุชั้นไหน จะรวมเป็นแถว «(ไม่ระบุ)» ของชั้นนั้น
+     * ไม่ทิ้งเงียบ ๆ ไม่งั้นผลรวมในกราฟจะไม่เท่ากับจำนวนครัวเรือนจริง
+     *
+     * @return array{prov:array<int,array{name:string,sub:string,n:int}>, dist:array<int,array{name:string,sub:string,n:int}>, tam:array<int,array{name:string,sub:string,n:int}>}
+     */
+    public function countByAreaLevel(): array
+    {
+        $levels = ['prov' => [], 'dist' => [], 'tam' => []];
+
+        foreach ($this->all() as $household) {
+            $prov = trim((string) ($household['prov'] ?? ''));
+            $dist = trim((string) ($household['dist'] ?? ''));
+            $tam = Thai::tamName(trim((string) ($household['tam'] ?? '')));
+
+            $provLabel = $prov ?: '(ไม่ระบุ)';
+
+            $this->bumpArea($levels['prov'], $provLabel, '', $provLabel, '');
+            $this->bumpArea($levels['dist'], $dist ?: '(ไม่ระบุ)', $prov ? 'จ.'.$prov : '', $provLabel, '');
+            $this->bumpArea($levels['tam'], $tam ?: '(ไม่ระบุ)', $dist ? 'อ.'.$dist : '', $provLabel, $dist);
+        }
+
+        /* เรียงตามสายพื้นที่ก่อน แล้วค่อยเรียงจำนวน — อำเภอจะอยู่รวมกลุ่มใต้จังหวัดเดียวกัน
+           และตำบลอยู่รวมกลุ่มใต้อำเภอเดียวกัน อ่านไล่ลงมาได้เป็นลำดับชั้น
+           ถ้าเรียงด้วยจำนวนอย่างเดียว อำเภอจากคนละจังหวัดจะสลับกันไปมา */
+        foreach ($levels as $key => $rows) {
+            usort($rows, fn ($a, $b) => Thai::compare($a['_prov'], $b['_prov'])
+                ?: (Thai::compare($a['_dist'], $b['_dist'])
+                ?: ($b['n'] <=> $a['n']
+                ?: Thai::compare($a['name'], $b['name']))));
+
+            $levels[$key] = array_values(array_map(
+                fn ($row) => ['name' => $row['name'], 'sub' => $row['sub'], 'n' => $row['n']],
+                $rows,
+            ));
+        }
+
+        return $levels;
+    }
+
+    /**
+     * นับเพิ่มหนึ่งรายการเข้าถังของชั้นพื้นที่
+     *
+     * $sortProv / $sortDist เก็บสายพื้นที่แม่ไว้ใช้เรียงลำดับ แล้วถูกตัดออกก่อนคืนค่า
+     *
+     * @param  array<int, array{name:string, sub:string, n:int, _prov:string, _dist:string}>  $bucket
+     */
+    private function bumpArea(array &$bucket, string $name, string $sub, string $sortProv, string $sortDist): void
+    {
+        foreach ($bucket as $i => $row) {
+            if ($row['name'] === $name && $row['sub'] === $sub) {
+                $bucket[$i]['n']++;
+
+                return;
+            }
+        }
+
+        $bucket[] = ['name' => $name, 'sub' => $sub, 'n' => 1, '_prov' => $sortProv, '_dist' => $sortDist];
+    }
+
+    /**
      * รายการพื้นที่ที่มีใช้จริง สำหรับทำช่องกรอง จังหวัด/อำเภอ/ตำบล
      *
      * คืนเป็น «สายพื้นที่» ไม่ซ้ำ เรียงตามชื่อ เพื่อให้หน้าเว็บกรองต่อเป็นชั้น ๆ ได้

@@ -375,6 +375,35 @@ input[type=checkbox]:indeterminate::after{content:"";position:absolute;left:2.5p
 .bar-fl{height:100%;background:var(--brand);border-radius:0 4px 4px 0;transition:width .5s cubic-bezier(.32,.72,0,1);cursor:pointer}
 .bar-fl:hover{background:var(--brand-hover)}
 .bar-row .bv{font-size:12.5px;font-weight:600;text-align:right;font-variant-numeric:tabular-nums;color:var(--ink)}
+/* -------------------------------------------------- กราฟแท่งแนวตั้ง (คอลัมน์)
+   สีบอก «ชั้นพื้นที่» (จังหวัด/อำเภอ/ตำบล) ไม่ได้บอกอันดับหรือขนาด
+   สลับตัวกรองแล้วแท่งจึงไม่เปลี่ยนสีตามอันดับ — สีผูกกับสิ่งที่มันแทน
+   สามสีนี้ผ่านตัวตรวจ palette ทั้งโหมดสว่างและมืด (ความต่างสำหรับตาบอดสี ΔE 9.2/9.4)
+   โหมดสว่างสีเขียวมิ้นต์คอนทราสต์ต่ำกว่า 3:1 จึงต้องมีตัวเลขกำกับบนแท่งเสมอ */
+/* สีประจำชั้น ใช้ร่วมกันทั้งแท่งกราฟและจุดหน้าหัวข้อ */
+.lv-prov{--vc:#2a78d6}
+.lv-dist{--vc:#eb6834}
+.lv-tam{--vc:#1baf7a}
+:root[data-theme="dark"] .lv-prov{--vc:#3987e5}
+:root[data-theme="dark"] .lv-dist{--vc:#d95926}
+:root[data-theme="dark"] .lv-tam{--vc:#199e70}
+
+.vchart{--vc:var(--brand);
+  display:flex;align-items:flex-end;gap:14px;overflow-x:auto;padding:4px 2px 0;
+  border-bottom:1px solid var(--axis)}
+
+.vchart .vb{flex:1 1 0;min-width:58px;max-width:110px;display:flex;flex-direction:column;align-items:center}
+.vchart .vnum{font-size:12.5px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--ink);margin-bottom:5px}
+/* รางสูงเท่ากันทุกแท่ง แท่งจึงยืนบนเส้นฐานเดียวกันและเทียบกันด้วยสายตาได้ */
+.vchart .vtrack{width:100%;height:132px;display:flex;align-items:flex-end;
+  background:linear-gradient(var(--grid),var(--grid)) top left/100% 1px no-repeat}
+.vchart .vfill{width:100%;background:var(--vc);border-radius:4px 4px 0 0;min-height:3px;
+  transition:height .5s cubic-bezier(.32,.72,0,1),filter .15s;cursor:pointer}
+.vchart .vfill:hover{filter:brightness(1.12) saturate(1.05)}
+.vchart .vlbl{font-size:11.5px;color:var(--ink-2);margin-top:8px;text-align:center;line-height:1.35;word-break:break-word}
+.vchart .vsub{display:block;font-size:10.5px;color:var(--ink-3)}
+/* จุดสีหน้าหัวข้อชั้น — บอกว่าแท่งสีนี้คือชั้นไหน โดยไม่ต้องมีกล่อง legend */
+.vdot{width:9px;height:9px;border-radius:3px;display:inline-block;flex:none;background:var(--vc,var(--brand))}
 .meter{height:8px;border-radius:99px;background:var(--brand-soft);overflow:hidden;position:relative}
 .meter i{display:block;height:100%;border-radius:99px;background:var(--brand);transition:width .5s}
 .meter.w i{background:var(--warning)}

@@ -32,18 +32,6 @@
         </div>
 
         <div class="tile">
-            <div class="tl">บันทึกรายได้แล้ว</div>
-            <div class="tv">{{ $incomeCount }}<small> / {{ $total }}</small></div>
-            <div class="td">
-                มัธยฐาน {{ Thai::fmt($medianIncome) }} บาท/ปี · ขาด {{ $total - $incomeCount }} ครัวเรือน
-            </div>
-            <div class="tile-ic"><x-icon name="cash" :size="16" :stroke="2" /></div>
-            <div class="meter" style="margin-top:11px">
-                <i style="width:{{ round($incomeCount / max(1, $total) * 100, 1) }}%"></i>
-            </div>
-        </div>
-
-        <div class="tile">
             <div class="tl">ครัวเรือนเข้าร่วมกิจกรรม</div>
             <div class="tv">{{ Thai::fmt($enrolledCount) }}</div>
             <div class="td">
@@ -52,6 +40,23 @@
             <div class="tile-ic"><x-icon name="link" :size="16" :stroke="2" /></div>
             <div class="meter" style="margin-top:11px">
                 <i style="width:{{ round($enrolledCount / max(1, $total) * 100, 1) }}%"></i>
+            </div>
+        </div>
+
+        {{-- ครัวเรือนที่ยังไม่เข้าร่วมกิจกรรมใดเลย = ทะเบียนทั้งหมด − ที่เข้าร่วมแล้ว (นับครัวเรือนไม่ซ้ำ)
+             ครัวเรือนเดียวเข้าได้หลายกิจกรรม จึงต้องเทียบกับ «ครัวเรือนไม่ซ้ำ» ไม่ใช่จำนวนรายการลงทะเบียน --}}
+        @php $notEnrolled = max(0, $total - $enrolledCount); @endphp
+
+        <div class="tile">
+            <div class="tl">ครัวเรือนที่ยังไม่เข้าร่วม</div>
+            <div class="tv">{{ Thai::fmt($notEnrolled) }}</div>
+            <div class="td">
+                {{ $total ? round($notEnrolled / $total * 100) : 0 }}% ของทะเบียน
+                {{ Thai::fmt($total) }} ครัวเรือน
+            </div>
+            <div class="tile-ic"><x-icon name="users" :size="16" :stroke="2" /></div>
+            <div class="meter" style="margin-top:11px">
+                <i style="width:{{ $total ? round($notEnrolled / $total * 100, 1) : 0 }}%"></i>
             </div>
         </div>
 
@@ -114,44 +119,125 @@
             </div>
             <div class="tile-ic"><x-icon name="map" :size="16" :stroke="2" /></div>
         </div>
+
+        <div class="tile">
+            <div class="tl">บันทึกรายได้แล้ว</div>
+            <div class="tv">{{ $incomeCount }}<small> / {{ $total }}</small></div>
+            <div class="td">
+                มัธยฐาน {{ Thai::fmt($medianIncome) }} บาท/ปี · ขาด {{ $total - $incomeCount }} ครัวเรือน
+            </div>
+            <div class="tile-ic"><x-icon name="cash" :size="16" :stroke="2" /></div>
+            <div class="meter" style="margin-top:11px">
+                <i style="width:{{ round($incomeCount / max(1, $total) * 100, 1) }}%"></i>
+            </div>
+        </div>
+
+        {{-- รายได้เฉลี่ยก่อนเข้าร่วม (BL) — เฉลี่ยจากครัวเรือนที่ลงทะเบียนและมีตัวเลขรายได้ --}}
+        <div class="tile">
+            <div class="tl">รายได้เฉลี่ยก่อนเข้าร่วม</div>
+            <div class="tv money">{{ $income['beforeAvg'] !== null ? Thai::fmt($income['beforeAvg']) : '—' }}<small> บาท/ปี</small></div>
+            <div class="td">{{ Thai::fmt($income['beforeCount']) }}/{{ Thai::fmt($income['total']) }} รายการมีข้อมูล</div>
+            <div class="meter" style="margin-top:9px">
+                <i style="width:{{ $income['total'] ? round($income['beforeCount'] / $income['total'] * 100, 1) : 0 }}%"></i>
+            </div>
+        </div>
+
+        {{-- รายได้เฉลี่ยหลังเข้าร่วม + ส่วนต่าง
+             ส่วนต่างคิดจากรายคนที่มีตัวเลขครบทั้งสองฝั่ง ไม่ใช่เอาสองค่าเฉลี่ยมาลบกัน
+             เพราะคนละกลุ่มตัวอย่าง (คนที่ยังไม่จบยังไม่มีรายได้หลังเข้าร่วม) --}}
+        <div class="tile">
+            <div class="tl">รายได้เฉลี่ยหลังเข้าร่วม</div>
+            <div class="tv money">{{ $income['afterAvg'] !== null ? Thai::fmt($income['afterAvg']) : '—' }}<small> บาท/ปี</small></div>
+            <div class="td">
+                @if ($income['diffAvg'] !== null)
+                    <span style="color:{{ $income['diffAvg'] > 0 ? 'var(--good-ink)' : ($income['diffAvg'] < 0 ? 'var(--critical-ink)' : 'inherit') }};font-weight:600">
+                        @if ($income['diffAvg'] > 0)
+                            +{{ Thai::fmt($income['diffAvg']) }}
+                        @elseif ($income['diffAvg'] < 0)
+                            −{{ Thai::fmt(abs($income['diffAvg'])) }}
+                        @else
+                            เท่าเดิม
+                        @endif
+                    </span>
+                    เทียบก่อนเข้าร่วม ({{ Thai::fmt($income['pairCount']) }} ราย)
+                @else
+                    {{ Thai::fmt($income['afterCount']) }}/{{ Thai::fmt($income['total']) }} รายการมีข้อมูล
+                @endif
+            </div>
+            <div class="meter" style="margin-top:9px">
+                <i style="width:{{ $income['total'] ? round($income['afterCount'] / $income['total'] * 100, 1) : 0 }}%"></i>
+            </div>
+        </div>
+
+        {{-- สถานะการดำเนินงานของรายการลงทะเบียนทั้งระบบ --}}
+        @php $doneCount = $statusCounts['สำเร็จ'] ?? 0; @endphp
+
+        <div class="tile">
+            <div class="tl">สถานะการดำเนินงาน</div>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:9px">
+                @forelse ($statusCounts as $status => $n)
+                    <span class="bg {{ $statusClass[$status] ?? '' }}">{{ $status }} <b>{{ Thai::fmt($n) }}</b></span>
+                @empty
+                    <span class="t-empty"></span>
+                @endforelse
+            </div>
+            @if ($income['total'])
+                <div class="meter" style="margin-top:11px">
+                    <i style="width:{{ round($doneCount / $income['total'] * 100, 1) }}%"></i>
+                </div>
+                <div class="td">สำเร็จแล้ว {{ round($doneCount / $income['total'] * 100) }}%
+                    ({{ Thai::fmt($doneCount) }}/{{ Thai::fmt($income['total']) }} รายการ)</div>
+            @endif
+        </div>
     </div>
 
     <div class="grid2" style="margin-bottom:16px">
-        {{-- --------------------------------------------- ครัวเรือนตามหมู่บ้าน --}}
+        {{-- ------------------------------------------- ครัวเรือนตามชั้นพื้นที่
+             แยกสามชั้น จังหวัด → อำเภอ → ตำบล (ไม่ลงถึงหมู่บ้าน)
+             แต่ละชั้นสเกลแท่งด้วยค่าสูงสุดของชั้นตัวเอง ไม่ใช่ค่าสูงสุดรวม
+             ไม่งั้นชั้นล่างที่ตัวเลขน้อยกว่าจะกลายเป็นแท่งจิ๋วอ่านไม่ออก --}}
         <div class="card">
             <div class="card-h">
                 <div style="flex:1">
-                    <h3>ครัวเรือนตามหมู่บ้าน</h3>
-                    <p>จำนวนครัวเรือนในทะเบียน แยกตามหมู่บ้าน/ชุมชน</p>
+                    <h3>ครัวเรือนตามพื้นที่</h3>
+                    <p>จำนวนครัวเรือนในทะเบียน แยกตามจังหวัด · อำเภอ · ตำบล</p>
                 </div>
                 <a class="btn out sm" href="{{ route('households.index') }}">ดูทะเบียน</a>
             </div>
             <div class="card-b">
-                @foreach ($villages as $v)
-                    @php $varied = count($v['variants']) > 1; @endphp
-                    <div class="bar-row">
-                        <div class="bl" title="{{ $v['name'] }}">
-                            {{ $v['name'] }} <span style="color:var(--ink-3)">ม.{{ $v['moo'] }}</span>
-                            @if ($varied)
-                                <span style="color:var(--warning-ink)"
-                                      data-tip="พบการสะกด {{ count($v['variants']) }} แบบ: {{ implode(' / ', $v['variants']) }}">
-                                    <x-icon name="warn" :size="11" :stroke="2.4" />
-                                </span>
-                            @endif
+                @foreach ([['prov', 'จังหวัด'], ['dist', 'อำเภอ'], ['tam', 'ตำบล']] as [$levelKey, $levelLabel])
+                    @php
+                        $levelRows = $areaLevels[$levelKey];
+                        $levelMax = max(array_column($levelRows, 'n') ?: [1]);
+                    @endphp
+
+                    <div style="margin-bottom:{{ $loop->last ? '0' : '18px' }}">
+                        {{-- จุดสีหน้าหัวข้อ = สีของแท่งในชั้นนี้ ทำหน้าที่แทนกล่อง legend --}}
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:9px">
+                            <span class="vdot lv-{{ $levelKey }}"></span>
+                            <b style="font-size:12.5px;font-weight:700;letter-spacing:.03em">{{ $levelLabel }}</b>
+                            <span style="font-size:12px;color:var(--ink-3)">{{ Thai::fmt(count($levelRows)) }} แห่ง</span>
                         </div>
-                        <div class="bar-tr">
-                            <div class="bar-fl" style="width:{{ round($v['n'] / max(1, $maxVillage) * 100, 1) }}%"
-                                 data-tip="<b>{{ $v['name'] }} ม.{{ $v['moo'] }}</b>{{ $v['n'] }} ครัวเรือน · {{ round($v['n'] / max(1, $total) * 100) }}% ของทะเบียน"></div>
+
+                        <div class="vchart lv-{{ $levelKey }}">
+                            @foreach ($levelRows as $row)
+                                <div class="vb">
+                                    <div class="vnum">{{ Thai::fmt($row['n']) }}</div>
+                                    <div class="vtrack">
+                                        <div class="vfill" style="height:{{ round($row['n'] / $levelMax * 100, 1) }}%"
+                                             data-tip="<b>{{ $row['name'] }}{{ $row['sub'] ? ' · '.$row['sub'] : '' }}</b>{{ $row['n'] }} ครัวเรือน · {{ round($row['n'] / max(1, $total) * 100) }}% ของทะเบียน"></div>
+                                    </div>
+                                    <div class="vlbl" title="{{ $row['name'] }}{{ $row['sub'] ? ' · '.$row['sub'] : '' }}">
+                                        {{ $row['name'] }}
+                                        @if ($row['sub'])
+                                            <span class="vsub">{{ $row['sub'] }}</span>
+                                        @endif
+                                    </div>
+                                </div>
+                            @endforeach
                         </div>
-                        <div class="bv">{{ Thai::fmt($v['n']) }}</div>
                     </div>
                 @endforeach
-
-                <div class="note" style="margin-top:12px">
-                    <x-icon name="info" :size="14" :stroke="2" />
-                    <span>ทุกครัวเรือนอยู่ในตำบลปุโรง (รหัส 10) ยกเว้น 1 ครัวเรือนในตำบลลำใหม่ (รหัส 5)
-                        — ไอคอนสีเหลืองหมายถึงพบชื่อหมู่บ้านสะกดต่างกันในทะเบียน</span>
-                </div>
             </div>
         </div>
 

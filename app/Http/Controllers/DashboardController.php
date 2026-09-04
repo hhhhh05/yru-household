@@ -15,8 +15,8 @@ class DashboardController extends Controller
         EnrollmentRepository $enrollments,
         DataQualityAnalyzer $quality,
     ) {
-        $villages = $households->byVillage();
         $budgetByYear = $activities->budgetByYear();
+        $areaLevels = $households->countByAreaLevel();
 
         return view('dashboard', [
             'navKey' => 'home',
@@ -33,9 +33,11 @@ class DashboardController extends Controller
             'budget' => $activities->totalBudget(),
             'budgetByYear' => $budgetByYear,
             'maxYearBudget' => max($budgetByYear ?: [1]),
-            'villages' => $villages,
             'areaCounts' => $households->areaCounts(),
-            'maxVillage' => max(array_column($villages, 'n') ?: [1]),
+            'areaLevels' => $areaLevels,
+            'income' => $enrollments->incomeSummary(),
+            'statusCounts' => $enrollments->statusCounts($enrollments->all()),
+            'statusClass' => EnrollmentRepository::STATUS_CLASS,
             'activities' => $activities->all(),
             'issues' => $quality->issues(),
             'criticalCount' => $quality->countBySeverity('critical'),

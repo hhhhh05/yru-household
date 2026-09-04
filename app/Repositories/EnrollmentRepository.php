@@ -110,6 +110,57 @@ class EnrollmentRepository
     }
 
     /**
+     * สรุปรายได้ก่อน/หลังเข้าร่วม ของรายการลงทะเบียนทั้งระบบ
+     *
+     * «ส่วนต่าง» คิดจากรายคนที่มีตัวเลขครบทั้งสองฝั่งเท่านั้น ไม่ใช่เอาค่าเฉลี่ยสองชุดมาลบกัน
+     * เพราะสองชุดนั้นมาจากคนละกลุ่มตัวอย่าง (คนที่ยังไม่จบยังไม่มีรายได้หลังเข้าร่วม)
+     * ถ้าลบตรง ๆ ตัวเลขจะเพี้ยนโดยดูเหมือนถูกต้อง
+     *
+     * @return array{total:int, beforeCount:int, afterCount:int, pairCount:int,
+     *               beforeAvg:int|null, afterAvg:int|null, diffAvg:int|null}
+     */
+    public function incomeSummary(): array
+    {
+        /** @var HouseholdRepository $households */
+        $households = app(HouseholdRepository::class);
+
+        $before = [];
+        $after = [];
+        $pairs = [];
+        $rows = $this->all();
+
+        foreach ($rows as $enrollment) {
+            $incomeAfter = $enrollment['income_after'] ?? null;
+
+            if ($incomeAfter !== null) {
+                $after[] = $incomeAfter;
+            }
+
+            $household = $households->find($enrollment['hc']);
+
+            if ($household && $household['income'] !== null) {
+                $before[] = $household['income'];
+
+                if ($incomeAfter !== null) {
+                    $pairs[] = $incomeAfter - $household['income'];
+                }
+            }
+        }
+
+        $avg = fn (array $v) => $v === [] ? null : (int) round(array_sum($v) / count($v));
+
+        return [
+            'total' => count($rows),
+            'beforeCount' => count($before),
+            'afterCount' => count($after),
+            'pairCount' => count($pairs),
+            'beforeAvg' => $avg($before),
+            'afterAvg' => $avg($after),
+            'diffAvg' => $avg($pairs),
+        ];
+    }
+
+    /**
      * รายการลงทะเบียนพร้อมข้อมูลครัวเรือน (h) และกิจกรรม (p)
      *
      * @param  array{pg?:string,pa?:string,q?:string,st?:string,vill?:string,sort?:string,dir?:int}  $f
