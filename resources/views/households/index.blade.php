@@ -157,6 +157,7 @@
                     <x-th field="phone" label="ติดต่อ" route-name="households.index" :sort="$filters['sort']" :dir="$filters['dir']" />
                     <x-th field="income" label="รายได้ BL" align="r" route-name="households.index" :sort="$filters['sort']" :dir="$filters['dir']" />
                     <x-th field="pj" label="กิจกรรม" align="c" route-name="households.index" :sort="$filters['sort']" :dir="$filters['dir']" />
+                    <th style="min-width:170px">หมายเหตุ</th>
                     <th style="width:104px"></th>
                 </tr>
                 </thead>
@@ -224,6 +225,16 @@
                             @endif
                         </td>
                         <td>
+                            {{-- หมายเหตุอาจยาว ตัดด้วย ellipsis แล้วให้ดูเต็มตอนชี้เมาส์
+                                 ไม่ปล่อยให้ดันความกว้างคอลัมน์อื่นจนตารางเพี้ยน --}}
+                            @if (trim((string) ($h['note'] ?? '')) !== '')
+                                <div style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.3px"
+                                     data-tip="<b>หมายเหตุ</b>{{ e($h['note']) }}">{{ $h['note'] }}</div>
+                            @else
+                                <span class="t-empty"></span>
+                            @endif
+                        </td>
+                        <td>
                             <div class="rowacts">
                                 @if (trim((string) $h['hc']) === '')
                                     {{-- ครัวเรือนที่ไม่มีรหัส HC — ทุกลิงก์ในระบบอ้างถึงครัวเรือนด้วย HC
@@ -263,7 +274,7 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="10">
+                        <td colspan="11">
                             <div class="empty">
                                 <div class="ic"><x-icon name="search" :size="22" :stroke="1.9" /></div>
                                 <b>ไม่พบครัวเรือนที่ตรงกับเงื่อนไข</b>
