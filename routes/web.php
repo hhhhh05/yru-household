@@ -10,6 +10,8 @@ use App\Http\Controllers\ExportController;
 use App\Http\Controllers\HouseholdController;
 use App\Http\Controllers\ImportExportController;
 use App\Http\Controllers\SetupController;
+use App\Http\Controllers\StaffController;
+use App\Http\Controllers\UnitController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -88,6 +90,22 @@ Route::prefix('enrollments')->name('enrollments.')->group(function () {
 
 /* ------------------------------------------------------------ เครื่องมือ ---- */
 Route::get('/areas', [AreaController::class, 'index'])->name('areas.index');
+
+/* เจ้าหน้าที่รับผิดชอบ — รายชื่อกลาง มีหน้าของตัวเอง */
+Route::prefix('staff')->name('staff.')->group(function () {
+    Route::get('/', [StaffController::class, 'index'])->name('index');
+    Route::post('/', [StaffController::class, 'store'])->name('store');
+    Route::patch('/{id}', [StaffController::class, 'update'])->name('update');
+    Route::delete('/{id}', [StaffController::class, 'destroy'])->name('destroy');
+});
+/* คณะ / หน่วยงาน — รายการตัวเลือกกลาง */
+Route::prefix('units')->name('units.')->group(function () {
+    Route::get('/', [UnitController::class, 'index'])->name('index');
+    Route::post('/', [UnitController::class, 'store'])->name('store');
+    Route::post('/import', [UnitController::class, 'importFromActivities'])->name('import');
+    Route::patch('/{id}', [UnitController::class, 'update'])->name('update');
+    Route::delete('/{id}', [UnitController::class, 'destroy'])->name('destroy');
+});
 Route::get('/quality', [DataQualityController::class, 'index'])->name('quality.index');
 Route::get('/import-export', [ImportExportController::class, 'index'])->name('io.index');
 

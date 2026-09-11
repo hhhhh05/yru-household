@@ -61,6 +61,24 @@ class Nav
                 'route' => 'areas.index',
                 'count' => 'areas',
             ],
+            'st' => [
+                'icon' => 'users',
+                'title' => 'เจ้าหน้าที่รับผิดชอบ',
+                'nav' => 'เจ้าหน้าที่',
+                'desc' => 'รายชื่อกลางของหน่วยงาน ใช้อ้างอิงในเอกสารและการติดต่อ',
+                'group' => '',
+                'route' => 'staff.index',
+                'count' => 'staff',
+            ],
+            'un' => [
+                'icon' => 'box',
+                'title' => 'คณะ / หน่วยงาน',
+                'nav' => 'คณะ / หน่วยงาน',
+                'desc' => 'รายชื่อคณะและหน่วยงาน ใช้เป็นตัวเลือกในหน้าเจ้าหน้าที่',
+                'group' => '',
+                'route' => 'units.index',
+                'count' => 'units',
+            ],
             'dq' => [
                 'icon' => 'shield',
                 'title' => 'ตรวจสอบคุณภาพข้อมูล',
@@ -94,6 +112,13 @@ class Nav
             'activities' => count(app(ActivityRepository::class)->all()),
             'enrollments' => count(app(EnrollmentRepository::class)->all()),
             'areas' => count(app(AreaRepository::class)->all()),
+            /* ตารางอาจยังไม่ถูกสร้าง (ยังไม่ได้รัน migration) — เมนูต้องไม่พัง */
+            'staff' => \Illuminate\Support\Facades\Schema::hasTable('staff')
+                ? \App\Models\Staff::count()
+                : null,
+            'units' => \Illuminate\Support\Facades\Schema::hasTable('units')
+                ? \App\Models\Unit::count()
+                : null,
             'issues' => count(app(DataQualityAnalyzer::class)->issues()),
             default => null,
         };

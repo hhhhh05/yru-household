@@ -379,6 +379,118 @@ function revertStatusSelect() {
 }
 
 /**
+ * หน้าต่างที่ใช้ร่วมกันระหว่าง «เพิ่ม» กับ «แก้ไข» (เจ้าหน้าที่ · คณะ/หน่วยงาน)
+ *
+ * ตั้งค่าทุกช่องทุกครั้งที่เปิด (ไม่ใช่เฉพาะช่องที่มีค่า)
+ * ไม่งั้นค่าของรายการก่อนหน้าจะค้างอยู่ในช่องที่รายการใหม่ไม่มีข้อมูล
+ */
+function prepareRecordModal(modal, data, cfg) {
+    if (modal.id !== cfg.modal) return;
+
+    const form = modal.querySelector(cfg.form);
+    const method = modal.querySelector(cfg.method);
+
+    if (!form) return;
+
+    const d = data || {};
+    const id = d[cfg.idKey] || '';
+    const editing = Boolean(id);
+
+    const storeUrl = readJson(cfg.storeUrl) || form.getAttribute('action') || '';
+    const updateUrl = readJson(cfg.updateUrl) || '';
+
+    /* แก้ไข = PATCH ไปที่ URL ของรายการนั้น · เพิ่ม = POST ไปที่ URL รายการรวม
+       ถ้าแม่แบบ URL หาย ให้ถอยไปโหมดเพิ่ม ดีกว่าส่ง PATCH ไปผิดที่ */
+    if (editing && updateUrl) {
+        form.setAttribute('action', updateUrl.replace('__ID__', encodeURIComponent(id)));
+        if (method) method.value = 'PATCH';
+    } else {
+        form.setAttribute('action', storeUrl);
+        if (method) method.value = '';
+    }
+
+    Object.entries(cfg.fields).forEach(([selector, key]) => {
+        setFieldValue(modal.querySelector(selector), editing ? (d[key] || '') : '');
+    });
+
+    const title = modal.querySelector(cfg.title);
+    const sub = modal.querySelector(cfg.sub);
+
+    if (title) title.textContent = editing ? cfg.titleEdit : cfg.titleNew;
+    if (sub) sub.textContent = editing ? cfg.subEdit : cfg.subNew;
+}
+
+/**
+ * ใส่ค่าลงช่องกรอก
+ *
+ * ถ้าเป็นช่องตัวเลือกและค่านั้นไม่มีในรายการ (ข้อมูลเก่าที่บันทึกไว้ก่อนมีรายการกลาง)
+ * ให้เติมตัวเลือกชั่วคราวก่อน ไม่งั้นเบราว์เซอร์จะตั้งค่าเป็นว่าง
+ * แล้วการกดบันทึกจะลบค่าเดิมทิ้งโดยที่ผู้ใช้ไม่รู้ตัว
+ */
+function setFieldValue(field, value) {
+    if (!field) return;
+
+    if (field.tagName === 'SELECT') {
+        /* ตัวเลือกชั่วคราวของรอบก่อน เอาออกก่อนเสมอ */
+        field.querySelector('option[data-adhoc]')?.remove();
+
+        const has = [...field.options].some((o) => o.value === value);
+
+        if (value && !has) {
+            const opt = document.createElement('option');
+            opt.value = value;
+            opt.textContent = value + ' (ไม่อยู่ในรายการ)';
+            opt.dataset.adhoc = '1';
+            field.appendChild(opt);
+        }
+    }
+
+    field.value = value;
+}
+
+const STAFF_MODAL = {
+    modal: 'm-staff',
+    form: '#staffForm',
+    method: '#staffMethod',
+    idKey: 'staffId',
+    storeUrl: '#staff-store-url',
+    updateUrl: '#staff-update-url',
+    title: '#staffTitle',
+    sub: '#staffSub',
+    titleNew: 'เพิ่มเจ้าหน้าที่',
+    titleEdit: 'แก้ไขเจ้าหน้าที่',
+    subNew: 'รายชื่อกลาง ไม่ผูกกับพื้นที่',
+    subEdit: 'แก้ไขข้อมูลติดต่อของเจ้าหน้าที่รายนี้',
+    fields: {
+        '#staffName': 'staffName',
+        '#staffPosition': 'staffPosition',
+        '#staffUnit': 'staffUnit',
+        '#staffPhone': 'staffPhone',
+        '#staffEmail': 'staffEmail',
+    },
+};
+
+const UNIT_MODAL = {
+    modal: 'm-unit',
+    form: '#unitForm',
+    method: '#unitMethod',
+    idKey: 'unitId',
+    storeUrl: '#unit-store-url',
+    updateUrl: '#unit-update-url',
+    title: '#unitTitle',
+    sub: '#unitSub',
+    titleNew: 'เพิ่มคณะ / หน่วยงาน',
+    titleEdit: 'แก้ไขคณะ / หน่วยงาน',
+    subNew: 'ใช้เป็นตัวเลือกในหน้าเจ้าหน้าที่',
+    subEdit: 'เปลี่ยนชื่อที่นี่ ระบบจะตามไปแก้ให้เจ้าหน้าที่ในคณะนี้ด้วย',
+    fields: {
+        '#unitName': 'unitName',
+        '#unitShort': 'unitShort',
+        '#unitNote': 'unitNote',
+    },
+};
+
+/**
  * เตรียมหน้าต่าง «เพิ่มเข้ากิจกรรม»
  *   · ช่องรายได้ก่อนเข้าร่วม เปิดเฉพาะตอนเพิ่มทีละราย และเติมค่าจากทะเบียนให้ก่อน (แก้ได้)
  *   · ปิด disabled เมื่อซ่อน ไม่งั้นค่าว่างจะถูกส่งไปทับค่าที่ระบบจะจดให้เอง
@@ -515,6 +627,8 @@ function openJsModal(id, only, data) {
     if (!m) return;
 
     prepareEnrollModal(m, only, data);
+    prepareRecordModal(m, data, STAFF_MODAL);
+    prepareRecordModal(m, data, UNIT_MODAL);
 
     /* เติมรายการที่เลือกไว้ลงในฟอร์ม — หรือรายการเดียวถ้าเปิดจากปุ่มในแถว */
     const selected = only ? [only] : currentSelection();

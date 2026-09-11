@@ -34,7 +34,7 @@
         @endforeach
 
         <div class="sb-group">เครื่องมือ</div>
-        @foreach (['ar', 'dq', 'io'] as $key)
+        @foreach (['ar', 'st', 'un', 'dq', 'io'] as $key)
             @php $item = Nav::find($key); $count = Nav::count($item['count'] ?? null); @endphp
             <a class="nav-i {{ $navKey === $key ? 'on' : '' }}" href="{{ route($item['route']) }}"
                title="{{ $item['title'] }}">
