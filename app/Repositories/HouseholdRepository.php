@@ -356,6 +356,16 @@ class HouseholdRepository
                 return (($x['income'] ?? -1) <=> ($y['income'] ?? -1)) * $dir;
             }
 
+            /* หมู่เป็นตัวเลข ต้องเทียบแบบตัวเลข ไม่ใช่ตัวอักษร
+               ไม่งั้นจะได้ลำดับ 1, 10, 2, 3 … เพราะ "10" มาก่อน "2" ในการเรียงแบบข้อความ
+               ค่าว่างให้ไปท้ายสุดเสมอ ไม่ปนอยู่ก่อนหมู่ 1 */
+            if ($sort === 'moo') {
+                $a = ($x['moo'] ?? '') === '' || $x['moo'] === null ? PHP_INT_MAX : (int) $x['moo'];
+                $b = ($y['moo'] ?? '') === '' || $y['moo'] === null ? PHP_INT_MAX : (int) $y['moo'];
+
+                return ($a <=> $b) * $dir;
+            }
+
             if ($sort === 'pj') {
                 $a = count($this->enrollments->forHousehold($x['hc']));
                 $b = count($this->enrollments->forHousehold($y['hc']));

@@ -12,6 +12,7 @@ use App\Support\Paginate;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\ValidationException;
 
 /**
  * รายชื่อเข้าร่วมโครงการ (HC ↔ PA) — CRUD จริงบนฐานข้อมูล
@@ -131,6 +132,8 @@ class EnrollmentController extends Controller
            เพราะบางครั้งยังเก็บตัวเลขไม่ได้ทันทีที่ปิดกิจกรรม */
         $v = $request->validate([
             'status' => ['required', 'string', 'in:'.implode(',', Enrollment::STATUSES)],
+            'joined_at' => ['nullable', 'string', 'date_format:Y-m-d'],
+            'income_before' => ['nullable', 'numeric', 'min:0', 'max:99999999'],
             'income_after' => ['nullable', 'numeric', 'min:0', 'max:99999999'],
             'note' => [
                 $request->input('status') === 'ออกกลางคัน' ? 'required' : 'nullable',
@@ -138,6 +141,8 @@ class EnrollmentController extends Controller
             ],
         ], [
             'note.required' => 'ระบุเหตุผลที่ออกกลางคันในช่องหมายเหตุ',
+            'joined_at.date_format' => 'วันที่เข้าร่วมต้องอยู่ในรูป ปปปป-ดด-วว (ปี พ.ศ.)',
+            'income_before.numeric' => 'รายได้ก่อนเข้าร่วมต้องเป็นตัวเลข',
             'income_after.numeric' => 'รายได้หลังเข้าร่วมต้องเป็นตัวเลข',
         ]);
 
@@ -147,6 +152,39 @@ class EnrollmentController extends Controller
            ไม่ควรไปล้างหมายเหตุเดิมทิ้ง */
         if ($request->has('note')) {
             $data['note'] = $v['note'] ?? null;
+        }
+
+        /* วันที่เก็บเป็น พ.ศ. ในคอลัมน์ DATE — date_format ตรวจได้แค่รูปแบบ
+           ต้องเช็คว่าเป็นวันที่มีอยู่จริงด้วย (กัน 2569-02-31) โดยแปลงเป็น ค.ศ. ก่อนเทียบปฏิทิน */
+        if ($request->has('joined_at')) {
+            $joined = trim((string) ($v['joined_at'] ?? ''));
+
+            if ($joined !== '') {
+                [$y, $m, $d] = array_map('intval', explode('-', $joined));
+
+                if ($y < 2400 || $y > 2700 || ! checkdate($m, $d, $y - 543)) {
+                    throw ValidationException::withMessages([
+                        'joined_at' => 'วันที่เข้าร่วมไม่ถูกต้อง — ปีต้องเป็น พ.ศ. และวันต้องมีอยู่จริง',
+                    ]);
+                }
+
+                $data['joined_at'] = $joined;
+            }
+        }
+
+        /* ส่งช่องรายได้ก่อนเข้าร่วมมา = ต้องมีค่าเสมอ ปล่อยว่างไม่ได้
+           (การเปลี่ยนสถานะจาก dropdown เฉย ๆ ไม่ได้ส่งช่องนี้มา จึงไม่โดนกฎนี้
+            และค่าที่จดไว้เดิมก็ไม่ถูกล้างทิ้ง) */
+        if ($request->has('income_before')) {
+            if (($v['income_before'] ?? '') === '') {
+                throw ValidationException::withMessages([
+                    'income_before' => 'ต้องระบุรายได้ก่อนเข้าร่วม — ใส่ 0 ได้ถ้าไม่มีรายได้',
+                ]);
+            }
+
+            if (Schema::hasColumn('enrollments', 'income_before')) {
+                $data['income_before'] = $v['income_before'];
+            }
         }
 
         if ($request->has('income_after') && Schema::hasColumn('enrollments', 'income_after')) {
@@ -480,17 +518,21 @@ class EnrollmentController extends Controller
                 $incomesAfter[] = $after;
             }
 
-            if ($household) {
-                if ($household['income'] !== null) {
-                    $incomes[] = $household['income'];
+            /* รายได้ก่อนเข้าร่วม ใช้ค่าที่จดไว้กับรายการนี้ ไม่ใช่รายได้ปัจจุบันของครัวเรือน
+               (แถวเก่าที่ยังไม่มีค่าจะถอยไปอ่านจากครัวเรือนให้เอง) */
+            $before = EnrollmentRepository::incomeBeforeOf($enrollment, $this->households);
 
-                    /* ส่วนต่างคิดได้เฉพาะรายที่มีตัวเลขครบทั้งสองฝั่ง
-                       ถ้าเอาค่าเฉลี่ยสองชุดมาลบกันตรง ๆ จะเพี้ยน เพราะคนละกลุ่มตัวอย่าง */
-                    if ($after !== null) {
-                        $incomePairs[] = $after - $household['income'];
-                    }
+            if ($before !== null) {
+                $incomes[] = $before;
+
+                /* ส่วนต่างคิดได้เฉพาะรายที่มีตัวเลขครบทั้งสองฝั่ง
+                   ถ้าเอาค่าเฉลี่ยสองชุดมาลบกันตรง ๆ จะเพี้ยน เพราะคนละกลุ่มตัวอย่าง */
+                if ($after !== null) {
+                    $incomePairs[] = $after - $before;
                 }
+            }
 
+            if ($household) {
                 $scopeHouseholds[$household['hc']] = $household;
             }
         }

@@ -151,8 +151,10 @@
                     </th>
                     <x-th field="hc" label="รหัส HC" route-name="households.index" :sort="$filters['sort']" :dir="$filters['dir']" />
                     <x-th field="name" label="ชื่อ - สกุล" route-name="households.index" :sort="$filters['sort']" :dir="$filters['dir']" />
-                    <x-th field="vill" label="หมู่บ้าน / หมู่" route-name="households.index" :sort="$filters['sort']" :dir="$filters['dir']" />
-                    <th>ตำบล · อำเภอ</th>
+                    <x-th field="vill" label="หมู่บ้าน" route-name="households.index" :sort="$filters['sort']" :dir="$filters['dir']" />
+                    <x-th field="moo" label="หมู่" align="c" route-name="households.index" :sort="$filters['sort']" :dir="$filters['dir']" width="width:64px" />
+                    <th>ตำบล</th>
+                    <x-th field="dist" label="อำเภอ" route-name="households.index" :sort="$filters['sort']" :dir="$filters['dir']" />
                     <x-th field="prov" label="จังหวัด" route-name="households.index" :sort="$filters['sort']" :dir="$filters['dir']" />
                     <x-th field="phone" label="ติดต่อ" route-name="households.index" :sort="$filters['sort']" :dir="$filters['dir']" />
                     <x-th field="income" label="รายได้ BL" align="r" route-name="households.index" :sort="$filters['sort']" :dir="$filters['dir']" />
@@ -170,8 +172,8 @@
                     @endphp
                     <tr class="{{ $checked ? 'sel-row' : '' }}">
                         <td class="c">
-                            <input type="checkbox" data-ck="{{ $h['hc'] }}" @checked($checked)
-                                   aria-label="เลือก {{ $h['hc'] }}">
+                            <input type="checkbox" data-ck="{{ $h['hc'] }}" data-ck-name="{{ $h['name'] }}"
+                                   @checked($checked) aria-label="เลือก {{ $h['hc'] }}">
                         </td>
                         <td>
                             <span class="code">{{ $h['hc'] }}</span>
@@ -186,14 +188,27 @@
                             <div class="t-name">{{ $h['name'] }}</div>
                             <div class="t-sub">บ้านเลขที่ {{ $h['house'] }}</div>
                         </td>
-                        <td>{{ $h['vill'] }} <span class="pill">ม.{{ $h['moo'] }}</span></td>
+                        <td>{{ $h['vill'] }}</td>
+                        <td class="c">
+                            @if (trim((string) $h['moo']) !== '')
+                                <span class="pill">{{ $h['moo'] }}</span>
+                            @else
+                                <span class="t-empty"></span>
+                            @endif
+                        </td>
                         <td>
                             @if ($h['tam'])
-                                ต.{{ Thai::tamName($h['tam']) }} <span class="pill">{{ Thai::tamCode($h['tam']) }}</span>
+                                ต.{{ Thai::tamName($h['tam']) }}
                             @else
                                 <span class="bg b-crit"><x-icon name="warn" :size="11" :stroke="2.4" /> ไม่ระบุ</span>
                             @endif
-                            <div class="t-sub">อ.{{ $h['dist'] }}</div>
+                        </td>
+                        <td>
+                            @if (trim((string) $h['dist']) !== '')
+                                อ.{{ $h['dist'] }}
+                            @else
+                                <span class="t-empty"></span>
+                            @endif
                         </td>
                         <td>
                             @if ($h['prov'])
@@ -244,6 +259,14 @@
                                         <x-icon name="warn" :size="11" :stroke="2.4" /> ไม่มีรหัส HC
                                     </span>
                                 @else
+                                {{-- เพิ่มครัวเรือนนี้เข้ากิจกรรม — ใช้หน้าต่างเดียวกับการเพิ่มแบบกลุ่ม
+                                     data-modal-only บอกว่าให้ทำกับ HC นี้รายเดียว ไม่ต้องติ๊กเลือกก่อน --}}
+                                <button type="button" class="ia" data-modal-open="m-enroll"
+                                        data-modal-only="{{ $h['hc'] }}"
+                                        data-modal-income="{{ $h['income'] ?? '' }}"
+                                        data-modal-name="{{ $h['name'] }}" title="เพิ่มเข้ากิจกรรม">
+                                    <x-icon name="link" :size="15" :stroke="2" />
+                                </button>
                                 <a class="ia" href="{{ route('households.show', $h['hc']) }}" title="ดูรายละเอียด">
                                     <x-icon name="eye" :size="15" :stroke="2" />
                                 </a>
@@ -274,7 +297,7 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="11">
+                        <td colspan="13">
                             <div class="empty">
                                 <div class="ic"><x-icon name="search" :size="22" :stroke="1.9" /></div>
                                 <b>ไม่พบครัวเรือนที่ตรงกับเงื่อนไข</b>
@@ -319,7 +342,7 @@
                     <div class="mc-meta">บ้านเลขที่ {{ $h['house'] }} · {{ $h['vill'] }} ม.{{ $h['moo'] }}</div>
                     <div class="mc-tags">
                         @if ($h['tam'])
-                            <span class="bg">ต.{{ Thai::tamName($h['tam']) }} · รหัส {{ Thai::tamCode($h['tam']) }}</span>
+                            <span class="bg">ต.{{ Thai::tamName($h['tam']) }}</span>
                         @else
                             <span class="bg b-crit"><x-icon name="warn" :size="11" :stroke="2.4" /> ไม่ระบุตำบล</span>
                         @endif
@@ -358,23 +381,66 @@
             <div class="md-h">
                 <div class="ic-cir brand"><x-icon name="link" :size="19" :stroke="2.1" /></div>
                 <div style="flex:1">
-                    <h3>เพิ่ม <span data-selection-count>0</span> ครัวเรือนเข้ากิจกรรม</h3>
-                    <p>เลือกกิจกรรมปลายทาง</p>
+                    <h3 id="enrollTitle">เพิ่ม <span data-selection-count>0</span> ครัวเรือนเข้ากิจกรรม</h3>
+                    {{-- เพิ่มทีละราย = โชว์ HC กับชื่อให้เห็นว่ากำลังทำกับใคร
+                         เพิ่มทีละกลุ่ม = โชว์รายชื่อที่เลือกไว้ --}}
+                    <p id="enrollWho">เลือกกิจกรรมปลายทาง</p>
                 </div>
                 <button type="button" class="icon-btn" data-modal-close><x-icon name="x" :size="16" :stroke="2.2" /></button>
             </div>
             <div class="md-b">
+                @php
+                    /* รายชื่อโครงการหลักที่มีกิจกรรมอยู่จริง — ประกอบจาก $activities ที่ส่งมาอยู่แล้ว
+                       ไม่ต้องเพิ่มคิวรีใหม่ที่คอนโทรลเลอร์ */
+                    $enrollPrograms = [];
+
+                    foreach ($activities as $a) {
+                        $pid = (string) ($a['program_id'] ?? '');
+
+                        if ($pid !== '' && ! isset($enrollPrograms[$pid])) {
+                            $enrollPrograms[$pid] = $a['program'] ?: 'โครงการ '.$pid;
+                        }
+                    }
+                @endphp
+
+                {{-- ทั้งโครงการหลักและกิจกรรมต้องเลือกเอง ไม่มีค่าตั้งต้น
+                     เพราะถ้าเลือกตัวแรกให้อัตโนมัติ ผู้ใช้อาจกดบันทึกโดยไม่ทันดูว่าเป็นกิจกรรมไหน --}}
                 <div class="f full">
-                    <label>กิจกรรม</label>
-                    <select name="pa">
-                        @foreach ($activities as $p)
-                            <option value="{{ $p['pa'] }}">{{ $p['pa'] }} · {{ mb_substr($p['name'], 0, 70) }}</option>
+                    <label>โครงการหลัก <span class="req">*</span></label>
+                    <select id="enrollProgram" required>
+                        <option value="" disabled selected>— เลือกโครงการหลัก —</option>
+                        @foreach ($enrollPrograms as $pid => $pname)
+                            <option value="{{ $pid }}">{{ mb_strlen($pname) > 64 ? mb_substr($pname, 0, 64).'…' : $pname }}</option>
                         @endforeach
                     </select>
                 </div>
+
                 <div class="f full" style="margin-top:14px">
-                    <label>สถานะเริ่มต้น</label>
-                    <select name="status">
+                    <label>กิจกรรม <span class="req">*</span></label>
+                    {{-- data-program ใช้กรองฝั่งหน้าเว็บ ไม่ต้องโหลดหน้าใหม่ --}}
+                    <select name="pa" id="enrollActivity" required>
+                        <option value="" disabled selected>— เลือกโครงการหลักก่อน —</option>
+                        @foreach ($activities as $p)
+                            <option value="{{ $p['pa'] }}" data-program="{{ $p['program_id'] ?? '' }}">
+                                {{ $p['pa'] }} · {{ mb_substr($p['name'], 0, 70) }}
+                            </option>
+                        @endforeach
+                    </select>
+                </div>
+
+                {{-- รายได้ก่อนเข้าร่วม แสดงเฉพาะตอนเพิ่มทีละราย (กดปุ่มในแถว)
+                     เพิ่มทีละกลุ่มจะซ่อนไว้ เพราะเลขเดียวใช้กับหลายครัวเรือนพร้อมกันไม่ได้
+                     ปล่อยให้ระบบจดจากทะเบียนของแต่ละรายเองแทน --}}
+                <div class="f full" style="margin-top:14px" id="enrollIncomeBox" hidden>
+                    <label>รายได้ก่อนเข้าร่วม <span class="req">*</span> <span class="tag-sug">บาท/ปี</span></label>
+                    <input type="number" name="income_before" id="enrollIncome" min="0" step="1000" disabled>
+                    <span class="hint" id="enrollIncomeHint"></span>
+                </div>
+
+                <div class="f full" style="margin-top:14px">
+                    <label>สถานะเริ่มต้น <span class="req">*</span></label>
+                    <select name="status" required>
+                        <option value="" disabled selected>— เลือกสถานะ —</option>
                         @foreach ($statuses as $s)
                             <option>{{ $s }}</option>
                         @endforeach

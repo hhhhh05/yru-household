@@ -77,7 +77,7 @@ class HouseholdController extends Controller
 
     public function store(Request $request)
     {
-        $data = $this->validated($request);
+        $data = $this->validated($request, creating: true);
         $areaCode = $data['area_code'];
         unset($data['area_code']);
 
@@ -296,18 +296,54 @@ class HouseholdController extends Controller
     /** เพิ่มครัวเรือนที่เลือกเข้ากิจกรรม */
     private function bulkEnroll(Request $request, $households): array
     {
-        $activity = Activity::where('pa', $request->input('pa'))->first();
+        /* กิจกรรมและสถานะต้องเลือกมาเสมอ ตรวจซ้ำที่นี่เพราะ required ฝั่งเบราว์เซอร์ข้ามได้ */
+        $pa = trim((string) $request->input('pa'));
 
-        if (! $activity) {
-            return ['title' => 'ไม่พบกิจกรรม', 'msg' => (string) $request->input('pa'), 'kind' => 'err'];
+        if ($pa === '') {
+            return [
+                'title' => 'ยังไม่ได้เลือกกิจกรรม',
+                'msg' => 'ต้องเลือกโครงการหลักและกิจกรรมปลายทางก่อนเพิ่มครัวเรือน',
+                'kind' => 'err',
+            ];
         }
 
-        $status = in_array($request->input('status'), Enrollment::STATUSES, true)
-            ? $request->input('status')
-            : 'รอเริ่ม';
+        $activity = Activity::where('pa', $pa)->first();
+
+        if (! $activity) {
+            return ['title' => 'ไม่พบกิจกรรม', 'msg' => $pa, 'kind' => 'err'];
+        }
+
+        $status = (string) $request->input('status');
+
+        if (! in_array($status, Enrollment::STATUSES, true)) {
+            return [
+                'title' => 'ยังไม่ได้เลือกสถานะเริ่มต้น',
+                'msg' => 'เลือกสถานะจากรายการที่กำหนดไว้',
+                'kind' => 'err',
+            ];
+        }
+
+        /* รายได้ก่อนเข้าร่วม — บังคับกรอกตอนเพิ่มทีละราย
+           ตรวจซ้ำที่นี่ด้วย เพราะ required ในเบราว์เซอร์ปิดหรือข้ามได้ */
+        $single = count($households) === 1;
+        $raw = trim((string) $request->input('income_before'));
+
+        if ($single && ($raw === '' || ! is_numeric($raw) || (float) $raw < 0)) {
+            return [
+                'title' => 'ยังไม่ได้กรอกรายได้ก่อนเข้าร่วม',
+                'msg' => 'ต้องระบุรายได้ก่อนเข้าร่วมเป็นตัวเลข (0 ขึ้นไป) ก่อนเพิ่มเข้ากิจกรรม',
+                'kind' => 'err',
+            ];
+        }
+
+        /* เพิ่มทีละกลุ่มส่งเลขเดียวมาใช้กับหลายครัวเรือนไม่ได้ จึงไม่รับค่าจากฟอร์ม
+           ปล่อยให้ระบบจดรายได้จากทะเบียนของแต่ละรายเอง */
+        $incomeBefore = $single && $raw !== '' && is_numeric($raw) ? (float) $raw : null;
 
         $added = 0;
         $skipped = 0;
+        $noIncome = 0;      // เพิ่มทีละกลุ่ม แล้วทะเบียนของรายนั้นไม่มีรายได้ให้จด
+        $filledRegistry = 0; // เติมรายได้กลับเข้าทะเบียนครัวเรือนให้ด้วย
 
         foreach ($households as $household) {
             /* กันซ้ำ: ชื่อกิจกรรมเดียวกัน + ปีงบเดียวกัน */
@@ -317,21 +353,41 @@ class HouseholdController extends Controller
                 continue;
             }
 
-            Enrollment::create([
+            /* ทะเบียนยังไม่มีรายได้ แต่เพิ่งกรอกมาตอนเข้าร่วม → บันทึกเข้าทะเบียนให้ด้วย
+               ตัวเลขนี้คือรายได้ตั้งต้นของครัวเรือนอยู่แล้ว ไม่ควรต้องไปกรอกซ้ำอีกหน้า
+
+               เขียนเฉพาะตอนทะเบียนว่างเท่านั้น ถ้ามีค่าอยู่แล้วจะไม่ทับ
+               เพราะการแก้ตัวเลขตอนเข้าร่วมอาจตั้งใจให้ต่างจากทะเบียน (เช่นสำรวจใหม่เฉพาะกิจกรรมนี้)
+               ถ้าทับให้ จะไปเปลี่ยนค่าตั้งต้นของกิจกรรมอื่นที่อ้างทะเบียนอยู่ด้วย */
+            if ($incomeBefore !== null && $household->income_bl === null) {
+                $household->update(['income_bl' => $incomeBefore]);
+                $filledRegistry++;
+            }
+
+            if ($incomeBefore === null && $household->income_bl === null) {
+                $noIncome++;
+            }
+
+            Enrollment::create(array_filter([
                 'code' => Enrollment::nextCode(),
                 'household_id' => $household->id,
                 'activity_id' => $activity->id,
                 'joined_at' => Enrollment::todayBuddhist(),
                 'status' => $status,
-            ]);
+                'income_before' => $incomeBefore,
+            ], fn ($v) => $v !== null));
             $added++;
         }
 
         return [
             'title' => $added ? 'เพิ่มเข้ากิจกรรมแล้ว' : 'ไม่มีรายการที่เพิ่มได้',
             'msg' => $added.' ครัวเรือน → '.$activity->pa
-                .($skipped ? " (ข้าม $skipped — ซ้ำกิจกรรมในปีงบ ".$activity->fiscal_year.')' : ''),
-            'kind' => $added ? 'ok' : 'warn',
+                .($skipped ? " (ข้าม $skipped — ซ้ำกิจกรรมในปีงบ ".$activity->fiscal_year.')' : '')
+                /* บอกให้เห็น ไม่ปล่อยให้มีรายการที่ไม่มีรายได้ตั้งต้นแบบเงียบ ๆ
+                   เพราะรายนั้นจะคิดส่วนต่างรายได้ตอนจบกิจกรรมไม่ได้ */
+                .($noIncome ? " · $noIncome รายยังไม่มีรายได้ในทะเบียน ต้องไปกรอกเพิ่มภายหลัง" : '')
+                .($filledRegistry ? ' · บันทึกรายได้เข้าทะเบียนครัวเรือนให้ด้วยแล้ว' : ''),
+            'kind' => $added ? ($noIncome ? 'warn' : 'ok') : 'warn',
         ];
     }
 
@@ -471,8 +527,11 @@ class HouseholdController extends Controller
      *
      * @return array<string, mixed>
      */
-    private function validated(Request $request): array
+    private function validated(Request $request, bool $creating = false): array
     {
+        /* บังคับกรอกรายได้เฉพาะตอน «เพิ่มครัวเรือนใหม่»
+           ตอนแก้ไขไม่บังคับ เพราะในทะเบียนมีครัวเรือนเก่าที่ยังไม่มีตัวเลขรายได้อยู่จำนวนมาก
+           ถ้าบังคับด้วย จะแก้เบอร์โทรหรือที่อยู่ของคนเหล่านั้นไม่ได้เลยจนกว่าจะไปหารายได้มากรอก */
         $v = $request->validate([
             'fullname' => ['required', 'string', 'max:180'],
             'house' => ['required', 'string', 'max:30'],
@@ -482,7 +541,7 @@ class HouseholdController extends Controller
             'dist' => ['required', 'string'],
             'tam' => ['required', 'string'],
             'phone' => ['nullable', 'string', 'regex:/^\d{3}-\d{3}-\d{4}$|^\d{10}$/'],
-            'income' => ['nullable', 'numeric', 'min:0'],
+            'income' => [$creating ? 'required' : 'nullable', 'numeric', 'min:0'],
             'lat' => ['nullable', 'numeric', 'between:-90,90'],
             'lng' => ['nullable', 'numeric', 'between:-180,180'],
             'note' => ['nullable', 'string', 'max:1000'],
@@ -494,6 +553,9 @@ class HouseholdController extends Controller
             'dist.required' => 'เลือกอำเภอ',
             'tam.required' => 'เลือกตำบล — จำเป็นสำหรับออกรหัส HC',
             'phone.regex' => 'เบอร์ต้องมี 10 หลัก',
+            'income.required' => 'กรอกรายได้ BL — ใส่ 0 ได้ถ้าไม่มีรายได้',
+            'income.numeric' => 'รายได้ต้องเป็นตัวเลข',
+            'income.min' => 'รายได้ต้องไม่ติดลบ',
             'lat.numeric' => 'ละติจูดต้องเป็นตัวเลข เช่น 6.512345',
             'lat.between' => 'ละติจูดต้องอยู่ระหว่าง -90 ถึง 90',
             'lng.numeric' => 'ลองจิจูดต้องเป็นตัวเลข เช่น 101.280123',

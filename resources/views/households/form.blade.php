@@ -192,17 +192,20 @@
                     </span>
                     <span class="msg"><x-icon name="warn" :size="12" :stroke="2.4" /> {{ $errors->first('lng') ?: 'ลองจิจูดต้องอยู่ระหว่าง -180 ถึง 180' }}</span>
                 </div>
-                <div class="f">
-                    <label>รายได้ BL <span class="tag-sug">บาท/ปี</span></label>
-                    <input name="income" type="number" min="0" step="1000"
+                <div class="f {{ $err('income') }}">
+                    {{-- บังคับเฉพาะตอนเพิ่มใหม่ ตอนแก้ไขไม่บังคับ
+                         เพราะครัวเรือนเก่าจำนวนมากยังไม่มีตัวเลขรายได้ ถ้าบังคับจะแก้ข้อมูลอื่นไม่ได้เลย --}}
+                    <label>รายได้ BL @unless ($editing)<span class="req">*</span>@endunless <span class="tag-sug">บาท/ปี</span></label>
+                    <input name="income" type="number" min="0" step="1000" @unless ($editing) required @endunless
                            value="{{ old('income', $editing ? $household['income'] : '') }}" placeholder="เช่น 130000">
                     <span class="hint" id="incHint">
                         @if ($editing && $household['income'] !== null)
                             ≈ {{ Thai::fmt(round($household['income'] / 12)) }} บาท/เดือน
                         @else
-                            เว้นว่างได้หากยังไม่มีข้อมูล
+                            ใส่ 0 ได้ถ้าไม่มีรายได้ — เป็นตัวตั้งต้นสำหรับวัดผลตอนจบกิจกรรม
                         @endif
                     </span>
+                    <span class="msg"><x-icon name="warn" :size="12" :stroke="2.4" /> {{ $errors->first('income') ?: 'กรอกรายได้เป็นตัวเลข (0 ขึ้นไป)' }}</span>
                 </div>
                 <div class="f span2">
                     <label>หมายเหตุ</label>

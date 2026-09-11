@@ -374,8 +374,10 @@
                     </th>
                     <x-th field="hc" label="รหัส HC" route-name="enrollments.index" :sort="$filters['sort']" :dir="$filters['dir']" width="width:112px" />
                     <x-th field="name" label="ชื่อ - สกุล" route-name="enrollments.index" :sort="$filters['sort']" :dir="$filters['dir']" width="min-width:186px" />
-                    <x-th field="vill" label="หมู่บ้าน / หมู่" route-name="enrollments.index" :sort="$filters['sort']" :dir="$filters['dir']" width="min-width:128px" />
-                    <th style="min-width:124px">ตำบล · อำเภอ</th>
+                    <x-th field="vill" label="หมู่บ้าน" route-name="enrollments.index" :sort="$filters['sort']" :dir="$filters['dir']" width="min-width:120px" />
+                    <x-th field="moo" label="หมู่" align="c" route-name="enrollments.index" :sort="$filters['sort']" :dir="$filters['dir']" width="width:60px" />
+                    <x-th field="tam" label="ตำบล" route-name="enrollments.index" :sort="$filters['sort']" :dir="$filters['dir']" width="min-width:104px" />
+                    <x-th field="dist" label="อำเภอ" route-name="enrollments.index" :sort="$filters['sort']" :dir="$filters['dir']" width="min-width:104px" />
                     <th style="min-width:96px">จังหวัด</th>
                     @if ($pa)
                         <th style="min-width:118px">ติดต่อ</th>
@@ -384,7 +386,7 @@
                     @endif
                     <x-th field="joined" label="วันที่เข้าร่วม" route-name="enrollments.index" :sort="$filters['sort']" :dir="$filters['dir']" width="width:118px" />
                     <x-th field="status" label="สถานะ" route-name="enrollments.index" :sort="$filters['sort']" :dir="$filters['dir']" width="width:170px" />
-                    <x-th field="income" label="รายได้ BL" align="r" route-name="enrollments.index" :sort="$filters['sort']" :dir="$filters['dir']" width="width:112px" />
+                    <x-th field="income" label="รายได้ก่อนเข้าร่วม" align="r" route-name="enrollments.index" :sort="$filters['sort']" :dir="$filters['dir']" width="width:126px" />
                     <th class="r" style="width:126px">รายได้หลังเข้าร่วม</th>
                     <th style="min-width:170px">หมายเหตุ</th>
                     <th style="width:44px"></th>
@@ -401,17 +403,27 @@
                             <div class="t-name" style="white-space:nowrap">{{ $e['h']['name'] }}</div>
                             <div class="t-sub">บ้านเลขที่ {{ $e['h']['house'] }}</div>
                         </td>
-                        <td style="white-space:nowrap">
-                            {{ $e['h']['vill'] }} <span class="pill">ม.{{ $e['h']['moo'] }}</span>
+                        <td style="white-space:nowrap">{{ $e['h']['vill'] }}</td>
+                        <td class="c">
+                            @if (trim((string) $e['h']['moo']) !== '')
+                                <span class="pill">{{ $e['h']['moo'] }}</span>
+                            @else
+                                <span class="t-empty"></span>
+                            @endif
                         </td>
                         <td style="white-space:nowrap">
                             @if ($e['h']['tam'])
                                 ต.{{ Thai::tamName($e['h']['tam']) }}
-                                <span class="pill">{{ Thai::tamCode($e['h']['tam']) }}</span>
                             @else
                                 <span class="bg b-crit">ไม่ระบุ</span>
                             @endif
-                            <div class="t-sub">อ.{{ $e['h']['dist'] }}</div>
+                        </td>
+                        <td style="white-space:nowrap">
+                            @if (trim((string) $e['h']['dist']) !== '')
+                                อ.{{ $e['h']['dist'] }}
+                            @else
+                                <span class="t-empty"></span>
+                            @endif
                         </td>
                         <td style="white-space:nowrap">
                             @if ($e['h']['prov'])
@@ -447,6 +459,7 @@
                                         data-en-hc="{{ $e['hc'] }}"
                                         data-en-name="{{ $e['h']['name'] }}"
                                         data-en-income="{{ $e['income_after'] ?? '' }}"
+                                        data-en-income-before="{{ $e['income_before'] ?? '' }}"
                                         data-en-note="{{ $e['note'] }}"
                                         style="height:30px;font-size:12.5px;max-width:148px" aria-label="สถานะ">
                                     @foreach ($statuses as $s)
@@ -456,9 +469,20 @@
                             </form>
 
                         </td>
+                        @php
+                            /* รายได้ก่อนเข้าร่วมที่จดไว้กับรายการนี้ — ถ้ายังไม่มี (แถวเก่า)
+                               ถอยไปใช้รายได้ปัจจุบันของครัวเรือน แล้วติดป้ายบอกว่าเป็นค่าอ้างอิง */
+                            $before = $e['income_before'] ?? null;
+                            $beforeIsSnapshot = $before !== null;
+                            $before ??= $e['h']['income'];
+                        @endphp
+
                         <td class="r">
-                            @if ($e['h']['income'] !== null)
-                                <span class="num" style="font-weight:600">{{ Thai::fmt($e['h']['income']) }}</span>
+                            @if ($before !== null)
+                                <span class="num" style="font-weight:600">{{ Thai::fmt($before) }}</span>
+                                @unless ($beforeIsSnapshot)
+                                    <div class="t-sub" data-tip="ยังไม่ได้บันทึกรายได้ก่อนเข้าร่วมของรายการนี้<br>ตัวเลขที่เห็นมาจากทะเบียนครัวเรือนปัจจุบัน">อ้างอิงทะเบียน</div>
+                                @endunless
                             @else
                                 <span class="t-empty"></span>
                             @endif
@@ -466,7 +490,6 @@
                         <td class="r">
                             @php
                                 $after = $e['income_after'] ?? null;
-                                $before = $e['h']['income'];
                                 /* ส่วนต่างคำนวณได้เมื่อมีทั้งรายได้ตั้งต้นและรายได้หลังจบ */
                                 $diff = ($after !== null && $before !== null) ? $after - $before : null;
                             @endphp
@@ -498,6 +521,20 @@
                                         <x-icon name="eye" :size="15" :stroke="2" />
                                     </a>
                                 @endif
+                                {{-- แก้ไขตัวเลขและหมายเหตุของรายการนี้ โดยไม่ต้องเปลี่ยนสถานะ --}}
+                                <button type="button" class="ia" data-en-edit
+                                        data-en-id="{{ $e['id'] }}"
+                                        data-en-hc="{{ $e['hc'] }}"
+                                        data-en-name="{{ $e['h']['name'] }}"
+                                        data-en-pa="{{ $e['pa'] }}"
+                                        data-en-status="{{ $e['status'] }}"
+                                        data-en-joined="{{ $e['joined'] }}"
+                                        data-en-before="{{ $e['income_before'] ?? '' }}"
+                                        data-en-after="{{ $e['income_after'] ?? '' }}"
+                                        data-en-note="{{ $e['note'] }}" title="แก้ไขรายได้และหมายเหตุ">
+                                    <x-icon name="edit" :size="15" :stroke="2" />
+                                </button>
+
                                 <form method="POST" action="{{ route('enrollments.destroy', ['id' => $e['id']] + qs()) }}" class="f-inline">
                                     @csrf
                                     @method('DELETE')
@@ -513,7 +550,7 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="13">
+                        <td colspan="15">
                             <div class="empty">
                                 <div class="ic"><x-icon name="users" :size="22" :stroke="1.9" /></div>
                                 @if ($filters['q'] || $filters['st'] || $filters['vill'])
@@ -615,6 +652,16 @@
 
             <div class="md-b">
                 <div class="fgrid">
+                    <div class="f full" id="enDetailIncomeBeforeBox">
+                        <label>รายได้ก่อนเข้าร่วม <span class="req">*</span> <span class="tag-sug">บาท/ปี</span></label>
+                        <input name="income_before" id="enDetailIncomeBefore" type="number" min="0" step="1000"
+                               placeholder="เช่น 120000">
+                        <span class="hint">
+                            ค่าที่จดไว้ตอนเข้าร่วม — แก้ได้ถ้าตัวเลขตอนนั้นคลาดเคลื่อน
+                            การแก้ที่นี่ไม่กระทบรายได้ในทะเบียนครัวเรือน
+                        </span>
+                    </div>
+
                     <div class="f full" id="enDetailIncomeBox">
                         <label>รายได้หลังเข้าร่วม <span class="tag-sug">บาท/ปี</span></label>
                         <input name="income_after" id="enDetailIncome" type="number" min="0" step="1000"
@@ -713,6 +760,67 @@
             </div>
         </form>
     </div>
+    {{-- ------------------------------------------------ แก้ไขรายการเข้าร่วม
+         ใช้ปลายทางเดียวกับการเปลี่ยนสถานะ แต่ส่งสถานะเดิมกลับไปโดยไม่แตะต้อง
+         จึงไม่ต้องเพิ่มเส้นทางใหม่ และกฎตรวจฝั่งเซิร์ฟเวอร์ยังเป็นชุดเดียวกัน --}}
+    <div class="modal sm js-modal" id="m-en-edit" role="dialog" aria-modal="true">
+        <form method="POST" id="enEditForm" action="">
+            @csrf
+            @method('PATCH')
+            <input type="hidden" name="status" id="enEditStatus" value="">
+
+            <div class="md-h">
+                <div class="ic-cir brand"><x-icon name="edit" :size="18" :stroke="2.2" /></div>
+                <div style="flex:1">
+                    <h3>แก้ไขรายการเข้าร่วม</h3>
+                    <p id="enEditWho"></p>
+                </div>
+                <button type="button" class="icon-btn" data-modal-close aria-label="ปิด">
+                    <x-icon name="x" :size="16" :stroke="2.2" />
+                </button>
+            </div>
+
+            <div class="md-b">
+                <div class="fgrid">
+                    <div class="f full">
+                        {{-- วันที่เก็บเป็น พ.ศ. ทั้งระบบ (เช่น 2569-08-11) ช่องนี้จึงรับ-ส่งปี พ.ศ. ตรง ๆ
+                             ไม่แปลงเป็น ค.ศ. เพื่อให้ตรงกับที่แสดงในตารางและกับข้อมูลเดิมจากชีต --}}
+                        <label>วันที่เข้าร่วม <span class="tag-sug">พ.ศ.</span></label>
+                        <input name="joined_at" id="enEditJoined" type="date">
+                        <span class="hint" id="enEditJoinedHint">ปีเป็น พ.ศ. เช่น 2569</span>
+                    </div>
+
+                    <div class="f full">
+                        <label>รายได้ก่อนเข้าร่วม <span class="req">*</span> <span class="tag-sug">บาท/ปี</span></label>
+                        <input name="income_before" id="enEditBefore" type="number" min="0" step="1000" required
+                               placeholder="เช่น 120000">
+                        <span class="hint">ใส่ 0 ได้ถ้าไม่มีรายได้ · แก้ที่นี่ไม่กระทบรายได้ในทะเบียนครัวเรือน</span>
+                    </div>
+
+                    <div class="f full">
+                        <label>รายได้หลังเข้าร่วม <span class="tag-sug">บาท/ปี</span></label>
+                        <input name="income_after" id="enEditAfter" type="number" min="0" step="1000"
+                               placeholder="เช่น 145000">
+                        <span class="hint" id="enEditDiff">เว้นว่างได้ถ้ายังเก็บตัวเลขไม่ได้</span>
+                    </div>
+
+                    <div class="f full">
+                        <label>หมายเหตุ <span class="req" id="enEditNoteReq" hidden>*</span></label>
+                        <textarea name="note" id="enEditNote" rows="3"
+                                  placeholder="บันทึกผลที่เกิดขึ้น หรือเหตุผล"></textarea>
+                        <span class="hint" id="enEditNoteHint"></span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="md-f">
+                <span style="flex:1"></span>
+                <button type="button" class="btn out" data-modal-close>ยกเลิก</button>
+                <button class="btn pri"><x-icon name="chk" :size="14" :stroke="2.4" /> บันทึก</button>
+            </div>
+        </form>
+    </div>
+
     {{-- แม่แบบ URL สำหรับส่งฟอร์ม — JS แทนที่ __ID__ ด้วยรหัสรายการที่กำลังแก้ --}}
     <script type="application/json" id="en-status-url">@json(route('enrollments.status', ['id' => '__ID__'] + qs()))</script>
 @endsection

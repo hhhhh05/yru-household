@@ -181,13 +181,35 @@ function initOverlays() {
         }
     });
 
+    /* เลือกโครงการหลัก → กรองรายการกิจกรรมในหน้าต่างเพิ่มเข้ากิจกรรม */
+    document.addEventListener('change', (e) => {
+        if (e.target.id === 'enrollProgram') filterEnrollActivities();
+    });
+
+    /* ปุ่มแก้ไขในแถวรายชื่อเข้าร่วม */
+    document.addEventListener('click', (e) => {
+        const edit = e.target.closest('[data-en-edit]');
+
+        if (edit) {
+            e.preventDefault();
+            openEnrollEdit(edit);
+        }
+    });
+
+    /* พิมพ์รายได้ → อัปเดตส่วนต่างให้เห็นทันที */
+    document.addEventListener('input', (e) => {
+        if (e.target.id === 'enEditBefore' || e.target.id === 'enEditAfter') showEnrollEditDiff();
+    });
+
     /* เปิดหน้าต่างที่เตรียมไว้ในหน้า (การจัดการแบบกลุ่ม) */
     document.addEventListener('click', (e) => {
         const opener = e.target.closest('[data-modal-open]');
 
         if (opener) {
             e.preventDefault();
-            openJsModal(opener.dataset.modalOpen);
+            /* data-modal-only = ทำกับรายการนี้รายการเดียว (ปุ่มในแถว)
+               ไม่มีค่า = ทำกับรายการที่ติ๊กเลือกไว้ (แถบจัดการแบบกลุ่ม) */
+            openJsModal(opener.dataset.modalOpen, opener.dataset.modalOnly, opener.dataset);
             return;
         }
 
@@ -237,6 +259,20 @@ function openStatusDetail(select) {
     income.disabled = !spec.income;
     income.value = spec.income ? select.dataset.enIncome || '' : '';
 
+    /* รายได้ก่อนเข้าร่วม แสดงคู่กันเฉพาะตอน «สำเร็จ» เพราะเป็นตอนที่ต้องเทียบสองตัวเลข
+       ปิด disabled ด้วยเมื่อซ่อน ไม่งั้นค่าว่างจะถูกส่งไปล้างค่าที่จดไว้ */
+    const beforeBox = $('#enDetailIncomeBeforeBox');
+    const before = $('#enDetailIncomeBefore');
+
+    if (beforeBox && before) {
+        beforeBox.hidden = !spec.income;
+        before.disabled = !spec.income;
+        /* บังคับกรอกเมื่อช่องโผล่ — ปิด required พร้อมกับซ่อน
+           ไม่งั้นเบราว์เซอร์จะบล็อกการส่งด้วยช่องที่มองไม่เห็น */
+        before.required = spec.income;
+        before.value = spec.income ? select.dataset.enIncomeBefore || '' : '';
+    }
+
     const note = $('#enDetailNote');
     note.value = select.dataset.enNote || '';
     note.required = spec.noteRequired;
@@ -253,6 +289,73 @@ function openStatusDetail(select) {
     setTimeout(() => (spec.income ? income : note).focus(), 60);
 
     return true;
+}
+
+/**
+ * เปิดหน้าต่างแก้ไขรายการเข้าร่วม — รายได้ก่อน/หลัง และหมายเหตุ
+ * ส่งสถานะเดิมกลับไปด้วยโดยไม่เปลี่ยน เพราะปลายทางเดียวกับการเปลี่ยนสถานะ
+ */
+function openEnrollEdit(button) {
+    const form = $('#enEditForm');
+    const urlTemplate = readJson('#en-status-url');
+
+    if (!form || !urlTemplate) return;
+
+    const d = button.dataset;
+    form.action = urlTemplate.replace('__ID__', encodeURIComponent(d.enId || ''));
+    $('#enEditStatus').value = d.enStatus || '';
+    $('#enEditWho').innerHTML =
+        `<span class="code">${esc(d.enHc || '')}</span> · ${esc(d.enName || '')}`
+        + (d.enPa ? ` · <span class="code">${esc(d.enPa)}</span>` : '');
+
+    const before = $('#enEditBefore');
+    const after = $('#enEditAfter');
+    const note = $('#enEditNote');
+    const joined = $('#enEditJoined');
+
+    if (joined) joined.value = d.enJoined || '';
+
+    before.value = d.enBefore || '';
+    after.value = d.enAfter || '';
+    note.value = d.enNote || '';
+
+    /* «ออกกลางคัน» ต้องมีเหตุผลเสมอ — กฎเดียวกับตอนเปลี่ยนสถานะ
+       ถ้าไม่บังคับที่นี่ด้วย จะลบหมายเหตุทิ้งผ่านหน้าต่างนี้ได้ แล้วเซิร์ฟเวอร์จะปฏิเสธทีหลัง */
+    const noteRequired = d.enStatus === 'ออกกลางคัน';
+    note.required = noteRequired;
+    $('#enEditNoteReq').hidden = !noteRequired;
+    $('#enEditNoteHint').textContent = noteRequired
+        ? 'สถานะออกกลางคัน — ต้องระบุเหตุผล'
+        : 'สถานะปัจจุบัน: ' + (d.enStatus || '—') + ' (แก้ที่นี่ไม่เปลี่ยนสถานะ)';
+
+    showEnrollEditDiff();
+    openJsModal('m-en-edit');
+    setTimeout(() => before.focus(), 60);
+}
+
+/** โชว์ส่วนต่างรายได้ทันทีที่พิมพ์ จะได้เห็นว่าตัวเลขที่กรอกสมเหตุสมผลไหม */
+function showEnrollEditDiff() {
+    const before = $('#enEditBefore');
+    const after = $('#enEditAfter');
+    const hint = $('#enEditDiff');
+
+    if (!before || !after || !hint) return;
+
+    const a = before.value === '' ? null : Number(before.value);
+    const b = after.value === '' ? null : Number(after.value);
+
+    if (a === null || b === null || Number.isNaN(a) || Number.isNaN(b)) {
+        hint.textContent = 'เว้นว่างได้ถ้ายังเก็บตัวเลขไม่ได้';
+        hint.style.color = '';
+
+        return;
+    }
+
+    const diff = b - a;
+    hint.textContent = diff === 0
+        ? 'เท่ากับก่อนเข้าร่วม'
+        : (diff > 0 ? '+' : '−') + fmt(Math.abs(diff)) + ' บาท/ปี เทียบก่อนเข้าร่วม';
+    hint.style.color = diff > 0 ? 'var(--good-ink)' : (diff < 0 ? 'var(--critical-ink)' : '');
 }
 
 /** สถานะที่เซิร์ฟเวอร์ส่งมา (option ที่ถูก selected ตอน render) */
@@ -275,13 +378,150 @@ function revertStatusSelect() {
     delete modal.dataset.revertId;
 }
 
-function openJsModal(id) {
+/**
+ * เตรียมหน้าต่าง «เพิ่มเข้ากิจกรรม»
+ *   · ช่องรายได้ก่อนเข้าร่วม เปิดเฉพาะตอนเพิ่มทีละราย และเติมค่าจากทะเบียนให้ก่อน (แก้ได้)
+ *   · ปิด disabled เมื่อซ่อน ไม่งั้นค่าว่างจะถูกส่งไปทับค่าที่ระบบจะจดให้เอง
+ */
+function prepareEnrollModal(modal, only, data) {
+    /* ทำเฉพาะหน้าต่าง «เพิ่มเข้ากิจกรรม» เท่านั้น
+       หน้าต่างอื่นก็มีช่อง name="status" เหมือนกัน (เช่นหน้าต่างแก้ไขรายการเข้าร่วม)
+       ถ้าไม่กันไว้ การล้างค่าด้านล่างจะไปลบสถานะของหน้าต่างนั้นทิ้ง */
+    if (modal.id !== 'm-enroll') return;
+
+    showEnrollWho(modal, only, data);
+
+    /* เปิดหน้าต่างใหม่ทุกครั้ง = เริ่มเลือกใหม่หมด ไม่ให้ค่าจากครั้งก่อนค้างอยู่
+       ไม่งั้นเพิ่มคนที่สองอาจติดกิจกรรมของคนแรกไปโดยไม่ได้ตั้งใจ */
+    const program = modal.querySelector('#enrollProgram');
+    const activity = modal.querySelector('#enrollActivity');
+    const status = modal.querySelector('[name="status"]');
+
+    if (program) program.value = '';
+    if (activity) activity.value = '';
+    if (status) status.value = '';
+
+    filterEnrollActivities();
+
+    const box = modal.querySelector('#enrollIncomeBox');
+    const input = modal.querySelector('#enrollIncome');
+    const hint = modal.querySelector('#enrollIncomeHint');
+
+    if (!box || !input) return;
+
+    /* บังคับกรอกเฉพาะตอนเพิ่มทีละราย — ตอนนั้นเท่านั้นที่ช่องนี้โผล่ให้กรอกจริง
+       ปิด required พร้อม disabled เมื่อซ่อน ไม่งั้นเบราว์เซอร์จะบล็อกการส่งฟอร์ม
+       ด้วยช่องที่มองไม่เห็น แล้วผู้ใช้จะงงว่ากดบันทึกแล้วไม่มีอะไรเกิดขึ้น */
+    const single = Boolean(only);
+    box.hidden = !single;
+    input.disabled = !single;
+    input.required = single;
+
+    if (!single) {
+        input.value = '';
+        return;
+    }
+
+    const known = (data && data.modalIncome) || '';
+    input.value = known;
+
+    if (hint) {
+        hint.textContent = known
+            ? 'ดึงจากทะเบียนครัวเรือนมาให้ แก้ได้ถ้าตัวเลขปัจจุบันไม่ตรง'
+            : 'ทะเบียนยังไม่มีรายได้ของครัวเรือนนี้ — กรอกได้ หรือเว้นว่างไว้ก่อน';
+    }
+}
+
+/**
+ * บอกให้ชัดว่ากำลังเพิ่ม «ใคร» เข้ากิจกรรม
+ *   · ทีละราย  → รหัส HC + ชื่อ
+ *   · ทีละกลุ่ม → รายชื่อที่ติ๊กไว้ (ยาวเกินก็ตัดแล้วบอกว่าเหลืออีกกี่ราย)
+ * ป้องกันการกดผิดแถวแล้วเพิ่มผิดคนโดยไม่รู้ตัว
+ */
+function showEnrollWho(modal, only, data) {
+    const who = modal.querySelector('#enrollWho');
+    const title = modal.querySelector('#enrollTitle');
+
+    if (!who) return;
+
+    if (only) {
+        const name = (data && data.modalName) || '';
+        who.innerHTML = `<span class="code">${esc(only)}</span>${name ? ' · ' + esc(name) : ''}`;
+
+        if (title) title.textContent = 'เพิ่มครัวเรือนนี้เข้ากิจกรรม';
+
+        return;
+    }
+
+    if (title) {
+        title.innerHTML = 'เพิ่ม <span data-selection-count>0</span> ครัวเรือนเข้ากิจกรรม';
+    }
+
+    const picked = selectionBoxes()
+        .filter((b) => b.checked)
+        .map((b) => b.dataset.ckName || b.dataset.ck || b.dataset.cken)
+        .filter(Boolean);
+
+    if (!picked.length) {
+        who.textContent = 'เลือกกิจกรรมปลายทาง';
+
+        return;
+    }
+
+    const shown = picked.slice(0, 5).map(esc).join(' · ');
+    who.innerHTML = shown + (picked.length > 5 ? ` และอีก ${fmt(picked.length - 5)} ราย` : '');
+}
+
+/** กรองรายการกิจกรรมตามโครงการหลักที่เลือก */
+function filterEnrollActivities() {
+    const program = document.getElementById('enrollProgram');
+    const activity = document.getElementById('enrollActivity');
+
+    if (!program || !activity) return;
+
+    const want = program.value;
+    const placeholder = activity.querySelector('option[value=""]');
+    let matches = 0;
+
+    [...activity.options].forEach((opt) => {
+        if (opt.value === '') return;   // ตัวเลือกหัวข้อ ไม่ต้องกรอง
+
+        const show = Boolean(want) && opt.dataset.program === want;
+        opt.hidden = !show;
+        opt.disabled = !show;
+
+        if (show) matches++;
+    });
+
+    if (placeholder) {
+        placeholder.textContent = want
+            ? (matches ? '— เลือกกิจกรรม —' : '— โครงการนี้ยังไม่มีกิจกรรม —')
+            : '— เลือกโครงการหลักก่อน —';
+    }
+
+    /* กิจกรรมที่ค้างอยู่ไม่อยู่ในโครงการที่เพิ่งเลือก → กลับไปที่ตัวเลือกหัวข้อ
+       จงใจไม่เด้งไปกิจกรรมแรกให้เอง เพราะผู้ใช้ต้องเลือกเองทุกครั้ง
+       ไม่งั้นอาจกดบันทึกโดยไม่ทันดูว่าเป็นกิจกรรมไหน */
+    const current = activity.selectedOptions[0];
+
+    if (!current || current.hidden) {
+        activity.value = '';
+    }
+}
+
+function openJsModal(id, only, data) {
     const m = document.getElementById(id);
 
     if (!m) return;
 
-    /* เติมรายการที่เลือกไว้ลงในฟอร์ม */
-    const selected = currentSelection();
+    prepareEnrollModal(m, only, data);
+
+    /* เติมรายการที่เลือกไว้ลงในฟอร์ม — หรือรายการเดียวถ้าเปิดจากปุ่มในแถว */
+    const selected = only ? [only] : currentSelection();
+
+    /* จำไว้ว่าหน้าต่างนี้ล็อกไว้กับรายการเดียวหรือไม่
+       ถ้าไม่จำ syncSelection() จะไปเขียนทับด้วยรายการที่ติ๊กไว้ทันทีที่มีการติ๊ก */
+    m.dataset.onlyHc = only || '';
     $$('[data-fill-selection]', m).forEach((input) => {
         input.value = selected.join(',');
     });
@@ -360,6 +600,9 @@ function syncSelection() {
         el.textContent = fmt(sel.length);
     });
     $$('[data-fill-selection]').forEach((i) => {
+        /* ข้ามหน้าต่างที่เปิดจากปุ่มในแถว — ค่าของมันคือครัวเรือนรายเดียวนั้น ไม่ใช่รายการที่ติ๊ก */
+        if (i.closest('.js-modal')?.dataset.onlyHc) return;
+
         i.value = sel.join(',');
     });
 

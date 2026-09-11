@@ -49,6 +49,7 @@ class EnrollmentRepository
                 'pa' => $enrollment->activity->pa,
                 'joined' => $enrollment->joinedDate(),
                 'status' => $enrollment->status,
+                'income_before' => $enrollment->income_before === null ? null : (int) $enrollment->income_before,
                 'income_after' => $enrollment->income_after === null ? null : (int) $enrollment->income_after,
                 'note' => (string) $enrollment->note,
             ];
@@ -110,6 +111,27 @@ class EnrollmentRepository
     }
 
     /**
+     * รายได้ก่อนเข้าร่วมของรายการหนึ่ง
+     *
+     * ใช้ค่าที่จดไว้กับรายการเป็นหลัก ถ้ายังไม่มี (แถวเก่าที่ยังไม่ได้เติมย้อนหลัง
+     * หรือยังไม่ได้รัน migration) ค่อยถอยไปอ่านรายได้ปัจจุบันของครัวเรือน
+     * จะได้ไม่มีช่องว่างในรายงานช่วงที่ยังเปลี่ยนผ่าน
+     *
+     * @param  array<string, mixed>  $enrollment
+     */
+    public static function incomeBeforeOf(array $enrollment, ?HouseholdRepository $households = null): ?int
+    {
+        if (($enrollment['income_before'] ?? null) !== null) {
+            return (int) $enrollment['income_before'];
+        }
+
+        $households ??= app(HouseholdRepository::class);
+        $household = $households->find($enrollment['hc']);
+
+        return $household['income'] ?? null;
+    }
+
+    /**
      * สรุปรายได้ก่อน/หลังเข้าร่วม ของรายการลงทะเบียนทั้งระบบ
      *
      * «ส่วนต่าง» คิดจากรายคนที่มีตัวเลขครบทั้งสองฝั่งเท่านั้น ไม่ใช่เอาค่าเฉลี่ยสองชุดมาลบกัน
@@ -136,13 +158,13 @@ class EnrollmentRepository
                 $after[] = $incomeAfter;
             }
 
-            $household = $households->find($enrollment['hc']);
+            $incomeBefore = self::incomeBeforeOf($enrollment, $households);
 
-            if ($household && $household['income'] !== null) {
-                $before[] = $household['income'];
+            if ($incomeBefore !== null) {
+                $before[] = $incomeBefore;
 
                 if ($incomeAfter !== null) {
-                    $pairs[] = $incomeAfter - $household['income'];
+                    $pairs[] = $incomeAfter - $incomeBefore;
                 }
             }
         }
@@ -246,13 +268,29 @@ class EnrollmentRepository
         $dir = ($f['dir'] ?? 1) < 0 ? -1 : 1;
 
         usort($rows, function ($x, $y) use ($sort, $dir) {
+            /* เรียงตามรายได้ก่อนเข้าร่วมที่จดไว้กับรายการนี้ ไม่ใช่รายได้ปัจจุบันของครัวเรือน
+               ให้ตรงกับตัวเลขที่แสดงในคอลัมน์นั้นจริง ๆ */
             if ($sort === 'income') {
-                return (($x['h']['income'] ?? -1) <=> ($y['h']['income'] ?? -1)) * $dir;
+                $a = self::incomeBeforeOf($x) ?? -1;
+                $b = self::incomeBeforeOf($y) ?? -1;
+
+                return ($a <=> $b) * $dir;
+            }
+
+            /* หมู่เป็นตัวเลข ต้องเทียบแบบตัวเลข ไม่งั้นได้ลำดับ 1, 10, 2, 3
+               ค่าว่างไปท้ายสุดเสมอ */
+            if ($sort === 'moo') {
+                $a = ($x['h']['moo'] ?? '') === '' || $x['h']['moo'] === null ? PHP_INT_MAX : (int) $x['h']['moo'];
+                $b = ($y['h']['moo'] ?? '') === '' || $y['h']['moo'] === null ? PHP_INT_MAX : (int) $y['h']['moo'];
+
+                return ($a <=> $b) * $dir;
             }
 
             [$a, $b] = match ($sort) {
                 'name' => [$x['h']['name'], $y['h']['name']],
-                'vill' => [$x['h']['vill'].$x['h']['moo'], $y['h']['vill'].$y['h']['moo']],
+                'vill' => [$x['h']['vill'], $y['h']['vill']],
+                'tam' => [$x['h']['tam'], $y['h']['tam']],
+                'dist' => [$x['h']['dist'], $y['h']['dist']],
                 'pa' => [$x['pa'], $y['pa']],
                 'joined' => [$x['joined'], $y['joined']],
                 'status' => [$x['status'], $y['status']],

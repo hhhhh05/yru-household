@@ -11,7 +11,39 @@ class Enrollment extends Model
     /** สถานะการดำเนินงานที่ใช้ได้ */
     public const STATUSES = ['กำลังดำเนินการ', 'สำเร็จ', 'รอเริ่ม', 'ออกกลางคัน'];
 
-    protected $fillable = ['code', 'household_id', 'activity_id', 'joined_at', 'status', 'income_after', 'note'];
+    protected $fillable = [
+        'code', 'household_id', 'activity_id', 'joined_at', 'status',
+        'income_before', 'income_after', 'note',
+    ];
+
+    /**
+     * จดรายได้ตั้งต้นของครัวเรือนไว้กับรายการลงทะเบียน ตอนสร้างใหม่
+     *
+     * ทำที่นี่ (ไม่ใช่ในคอนโทรลเลอร์) เพราะมีที่สร้างรายการอยู่หลายจุด
+     * — เพิ่มทีละคน · เพิ่มทีละกลุ่ม · คัดลอกไปกิจกรรมอื่น · เพิ่มพร้อมตอนบันทึกครัวเรือน
+     * ถ้าไปใส่ทีละจุดจะหลุดสักจุดแน่นอน และจุดที่หลุดจะเงียบ ไม่มีใครรู้
+     */
+    protected static function booted(): void
+    {
+        static::creating(function (self $enrollment) {
+            if ($enrollment->income_before !== null || ! self::hasIncomeBeforeColumn()) {
+                return;
+            }
+
+            $enrollment->income_before = Household::find($enrollment->household_id)?->income_bl;
+        });
+    }
+
+    /**
+     * มีคอลัมน์ income_before แล้วหรือยัง (ยังไม่รัน migration ก็ต้องไม่พัง)
+     * ถามฐานข้อมูลครั้งเดียวต่อ 1 request แล้วจำไว้ ไม่งั้นเพิ่มทีละ 50 คนจะยิงคำถามซ้ำ 50 รอบ
+     */
+    private static function hasIncomeBeforeColumn(): bool
+    {
+        static $has = null;
+
+        return $has ??= \Illuminate\Support\Facades\Schema::hasColumn('enrollments', 'income_before');
+    }
 
     public function household(): BelongsTo
     {
