@@ -76,11 +76,13 @@ class ExportController extends Controller
 
     private function activityRows(): array
     {
-        $rows = [['PA', 'ชื่อโครงการ', 'ชื่อกิจกรรม', 'งบประมาณ', 'ปีงบประมาณ', 'ครัวเรือนเข้าร่วม']];
+        $rows = [['PA', 'ชื่อโครงการ', 'ชื่อกิจกรรม', 'งบประมาณ', 'ปีงบประมาณ',
+            'คณะ/หน่วยงาน', 'เจ้าหน้าที่ผู้รับผิดชอบ', 'ครัวเรือนเข้าร่วม']];
 
         foreach ($this->activities->all() as $p) {
             $rows[] = [
                 $p['pa'], $p['program'], $p['name'], $p['budget'], $p['fy'],
+                $p['unit'] ?? '', $p['officer'] ?? '',
                 $this->enrollments->countForActivity($p['pa']),
             ];
         }

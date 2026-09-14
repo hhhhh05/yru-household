@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\Activity;
 use App\Models\Program;
+use App\Models\Staff;
+use App\Models\Unit;
 use App\Repositories\ActivityRepository;
 use App\Repositories\EnrollmentRepository;
 use App\Support\Thai;
@@ -61,8 +63,8 @@ class ActivityController extends Controller
             'fiscal_year' => $fiscalYear,
             'name' => trim($v['name']),
             'budget' => $v['budget'],
-            'target_households' => $v['target'] ?? null,
             'unit' => $v['unit'] ?? null,
+            'officer' => $v['officer'] ?? null,
             'lecturer_name' => $v['lecturer_name'] ?? null,
             'lecturer_phone' => $v['lecturer_phone'] ?? null,
             'lecturer_id_card' => $v['lecturer_id_card'] ?? null,
@@ -94,8 +96,8 @@ class ActivityController extends Controller
             'fiscal_year' => $fiscalYear,
             'name' => trim($v['name']),
             'budget' => $v['budget'],
-            'target_households' => $v['target'] ?? null,
             'unit' => $v['unit'] ?? null,
+            'officer' => $v['officer'] ?? null,
             'lecturer_name' => $v['lecturer_name'] ?? null,
             'lecturer_phone' => $v['lecturer_phone'] ?? null,
             'lecturer_id_card' => $v['lecturer_id_card'] ?? null,
@@ -174,6 +176,20 @@ class ActivityController extends Controller
             $request->merge(['fy' => $request->input('fy_new')]);
         }
 
+        /* ทุกช่องเป็นช่องบังคับ — แต่บังคับได้เฉพาะช่องที่ฐานข้อมูลรองรับจริง
+           ถ้ายังไม่ได้รันอัปเดตฐานข้อมูล คอลัมน์เหล่านี้ยังไม่มี ค่าที่กรอกจะถูกตัดทิ้งตอนบันทึกอยู่ดี
+           บังคับไปก็จะกลายเป็นฟอร์มที่กดบันทึกไม่ได้เลย */
+        $hasLecturerColumns = Schema::hasColumn('activities', 'lecturer_name')
+            && Schema::hasColumn('activities', 'workload_per_week');
+        $hasUnit = Schema::hasColumn('activities', 'unit');
+
+        /* เจ้าหน้าที่เลือกจากรายชื่อกลาง — ถ้ายังไม่มีใครในรายชื่อ ก็ไม่มีอะไรให้เลือก จึงยังไม่บังคับ */
+        $hasOfficer = Schema::hasColumn('activities', 'officer')
+            && Schema::hasTable('staff')
+            && Staff::exists();
+
+        $need = fn (bool $supported) => $supported ? 'required' : 'nullable';
+
         $v = $request->validate([
             'fy' => ['required', 'integer', 'min:2560', 'max:2600'],
             'fy_new' => ['nullable', 'integer', 'min:2560', 'max:2600'],
@@ -181,16 +197,23 @@ class ActivityController extends Controller
             'program_new' => ['nullable', 'string', 'max:255'],
             'name' => ['required', 'string', 'max:500'],
             'budget' => ['required', 'numeric', 'min:0'],
-            'target' => ['nullable', 'integer', 'min:0'],
-            'unit' => ['nullable', 'string', 'max:150'],
-            'lecturer_name' => ['nullable', 'string', 'max:150'],
-            'lecturer_phone' => ['nullable', 'string', 'regex:/^\d{3}-\d{3}-\d{4}$|^\d{9,10}$/'],
-            'lecturer_id_card' => ['nullable', 'string'],
-            'workload' => ['nullable', 'numeric', 'min:0', 'max:168'],
-            'description' => ['nullable', 'string', 'max:2000'],
+            'unit' => [$need($hasUnit), 'string', 'max:150'],
+            'officer' => [$need($hasOfficer), 'string', 'max:180'],
+            'lecturer_name' => [$need($hasLecturerColumns), 'string', 'max:150'],
+            'lecturer_phone' => [$need($hasLecturerColumns), 'string', 'regex:/^\d{3}-\d{3}-\d{4}$|^\d{9,10}$/'],
+            'lecturer_id_card' => [$need($hasLecturerColumns), 'string'],
+            'workload' => [$need($hasLecturerColumns), 'numeric', 'min:0', 'max:168'],
+            'description' => [$need($hasLecturerColumns), 'string', 'max:2000'],
         ], [
             'name.required' => 'กรอกชื่อกิจกรรม',
             'budget.required' => 'กรอกงบประมาณ',
+            'unit.required' => 'เลือกคณะ / หน่วยงานรับผิดชอบ',
+            'officer.required' => 'เลือกเจ้าหน้าที่ผู้รับผิดชอบ',
+            'lecturer_name.required' => 'กรอกชื่ออาจารย์ที่รับผิดชอบ',
+            'lecturer_phone.required' => 'กรอกเบอร์โทรของอาจารย์ที่รับผิดชอบ',
+            'lecturer_id_card.required' => 'กรอกเลขประจำตัวประชาชนของอาจารย์ที่รับผิดชอบ',
+            'workload.required' => 'กรอกภาระงานต่อสัปดาห์',
+            'description.required' => 'กรอกคำอธิบายเกี่ยวกับโครงการ',
             'lecturer_phone.regex' => 'เบอร์โทรต้องมี 9–10 หลัก',
             'workload.numeric' => 'ภาระงานต้องเป็นตัวเลข เช่น 6 หรือ 7.5',
             'workload.max' => 'ภาระงานต่อสัปดาห์เกิน 168 ชั่วโมงไม่ได้ (1 สัปดาห์มี 168 ชั่วโมง)',
@@ -227,6 +250,7 @@ class ActivityController extends Controller
         $pg = (string) $request->query('pg', '');       // กรองเฉพาะโครงการหลักเดียว
         $pa = (string) $request->query('pa', '');       // กรองเฉพาะกิจกรรมเดียว
         $unit = (string) $request->query('unit', '');   // กรองตามคณะ/หน่วยงานที่รับผิดชอบ
+        $officer = (string) $request->query('officer', '');   // กรองตามเจ้าหน้าที่ผู้รับผิดชอบ
         /* เปลี่ยนปีงบแล้วโครงการหลักที่ค้างอยู่อาจเป็นของปีอื่น → ทิ้งไป
            ไม่งั้นสองตัวกรองขัดกันเองจนตารางว่าง โดยผู้ใช้ไม่รู้สาเหตุ */
         if ($fy && $pg) {
@@ -253,14 +277,15 @@ class ActivityController extends Controller
             $mismatch = ! $current
                 || ($fy && (string) $current['fy'] !== $fy)
                 || ($pg && (string) ($current['program_id'] ?? '') !== $pg)
-                || ($unit && trim((string) ($current['unit'] ?? '')) !== trim($unit));
+                || ($unit && trim((string) ($current['unit'] ?? '')) !== trim($unit))
+                || ($officer && trim((string) ($current['officer'] ?? '')) !== trim($officer));
 
             if ($mismatch) {
                 $pa = '';
             }
         }
 
-        $rows = $this->activities->filter($fy, $q, $pg, $pa, $unit);
+        $rows = $this->activities->filter($fy, $q, $pg, $pa, $unit, $officer);
 
         $counts = [];
 
@@ -281,6 +306,16 @@ class ActivityController extends Controller
             'pa' => $pa,
             'unit' => $unit,
             'units' => $this->activities->units(),
+            'officer' => $officer,
+            'officers' => $this->activities->officers(),
+            /* ตัวเลือกในฟอร์ม — มาจากรายชื่อกลางที่จัดการในเมนู «เจ้าหน้าที่» และ «คณะ / หน่วยงาน»
+               ตารางอาจยังไม่ถูกสร้าง (ยังไม่ได้รัน migration) จึงต้องเช็คก่อน ไม่ใช่พังทั้งหน้า */
+            'officerOptions' => Schema::hasTable('staff')
+                ? Staff::orderBy('full_name')->pluck('full_name')->all()
+                : [],
+            'unitOptions' => Schema::hasTable('units')
+                ? Unit::orderBy('name')->pluck('name')->all()
+                : [],
             'scopeCount' => count($rows),
             'scopeBudget' => (int) array_sum(array_column($rows, 'budget')),
             'scopeProgramCount' => count($scopeProgramIds),

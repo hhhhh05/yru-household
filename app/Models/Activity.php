@@ -13,7 +13,7 @@ class Activity extends Model
     use SoftDeletes;
 
     protected $fillable = [
-        'pa', 'program_id', 'fiscal_year', 'name', 'budget', 'target_households', 'unit',
+        'pa', 'program_id', 'fiscal_year', 'name', 'budget', 'target_households', 'unit', 'officer',
         'lecturer_name', 'lecturer_phone', 'lecturer_id_card', 'workload_per_week', 'description',
     ];
 
@@ -51,6 +51,7 @@ class Activity extends Model
             'program_id' => $this->program_id,
             'target' => $this->target_households,
             'unit' => $this->unit,
+            'officer' => $this->officer,
             'lecturer' => $this->lecturer_name,
             'lecturer_phone' => $this->lecturer_phone,
             'lecturer_id_card' => $this->lecturer_id_card,

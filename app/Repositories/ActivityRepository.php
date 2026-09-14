@@ -125,6 +125,32 @@ class ActivityRepository
         return $out;
     }
 
+    /**
+     * รายชื่อเจ้าหน้าที่ผู้รับผิดชอบ ที่มีใช้จริงในข้อมูลกิจกรรม
+     *
+     * ดึงจากกิจกรรมเช่นเดียวกับ units() — ตัวเลือกในช่องกรองจึงไม่มีชื่อที่กรองแล้วว่างเปล่า
+     * (รายชื่อกลางในเมนู «เจ้าหน้าที่» อาจมีคนที่ยังไม่ถูกผูกกับกิจกรรมใด)
+     *
+     * @return array<int, string>
+     */
+    public function officers(): array
+    {
+        $officers = [];
+
+        foreach ($this->all() as $activity) {
+            $officer = trim((string) ($activity['officer'] ?? ''));
+
+            if ($officer !== '') {
+                $officers[$officer] = true;
+            }
+        }
+
+        $out = array_keys($officers);
+        sort($out);
+
+        return $out;
+    }
+
     /** จำนวนโครงการหลักทั้งหมด (ทุกปีงบ) */
     public function programCount(): int
     {
@@ -202,6 +228,7 @@ class ActivityRepository
         ?string $programId = null,
         ?string $pa = null,
         ?string $unit = null,
+        ?string $officer = null,
     ): array {
         $rows = $this->all();
 
@@ -220,6 +247,10 @@ class ActivityRepository
 
         if ($unit) {
             $rows = array_filter($rows, fn ($p) => trim((string) ($p['unit'] ?? '')) === trim($unit));
+        }
+
+        if ($officer) {
+            $rows = array_filter($rows, fn ($p) => trim((string) ($p['officer'] ?? '')) === trim($officer));
         }
 
         if ($q = mb_strtolower(trim((string) $q))) {

@@ -10,6 +10,9 @@
     $editing = (bool) $activity;
     $count = $editing ? ($counts[$activity['pa']] ?? 0) : 0;
     $err = fn (string $field) => $errors->has($field) ? 'err' : '';
+
+    /* มีรายชื่อเจ้าหน้าที่ให้เลือกไหม — ถ้ายังไม่มี ก็บังคับเลือกไม่ได้ */
+    $hasOfficerOptions = count($officerOptions ?? []) > 0;
     $fy = old('fy', $editing ? $activity['fy'] : 2569);
 @endphp
 
@@ -128,14 +131,11 @@
             </div>
 
             <div class="f">
-                <label>เป้าหมายครัวเรือน <span class="tag-sug">แนะนำเพิ่ม</span></label>
-                <input name="target" type="number" min="0" value="{{ old('target', $editing ? max(10, $count) : 30) }}">
-            </div>
-
-            <div class="f full">
-                <label>หน่วยงานรับผิดชอบ <span class="tag-sug">แนะนำเพิ่ม</span></label>
+                <label>คณะ / หน่วยงานรับผิดชอบ <span class="req">*</span></label>
                 @php
-                    $units = [
+                    /* ตัวเลือกมาจากเมนู «คณะ / หน่วยงาน» — ถ้ายังไม่ได้เพิ่มไว้ ใช้รายการตั้งต้นแทน
+                       จะได้ไม่เหลือช่องเปล่าให้เลือกไม่ได้ */
+                    $units = ($unitOptions ?? []) ?: [
                         'สถาบันวิจัยและพัฒนาชายแดนภาคใต้',
                         'คณะวิทยาศาสตร์เทคโนโลยีและการเกษตร',
                         'คณะวิทยาการจัดการ',
@@ -143,8 +143,14 @@
                         'คณะครุศาสตร์',
                     ];
                     $currentUnit = old('unit', $editing ? ($activity['unit'] ?? '') : '');
+
+                    /* ค่าเดิมที่ไม่อยู่ในรายการ (ข้อมูลเก่า) ต้องคงไว้เป็นตัวเลือกด้วย
+                       ไม่งั้นแค่เปิดฟอร์มแล้วกดบันทึก ค่าเดิมจะถูกเปลี่ยนโดยไม่ตั้งใจ */
+                    if ($currentUnit !== '' && ! in_array($currentUnit, $units, true)) {
+                        array_unshift($units, $currentUnit);
+                    }
                 @endphp
-                <select name="unit">
+                <select name="unit" required>
                     @foreach ($units as $unitOption)
                         <option value="{{ $unitOption }}" @selected($currentUnit === $unitOption)>{{ $unitOption }}</option>
                     @endforeach
@@ -157,15 +163,16 @@
             <div class="f-sec-h"><div class="n">2</div><h4>อาจารย์ผู้รับผิดชอบ</h4><div class="ln"></div></div>
             <div class="fgrid">
                 <div class="f {{ $err('lecturer_name') }}">
-                    <label>อาจารย์ที่รับผิดชอบ</label>
-                    <input name="lecturer_name" value="{{ old('lecturer_name', $editing ? ($activity['lecturer'] ?? '') : '') }}"
+                    <label>อาจารย์ที่รับผิดชอบ <span class="req">*</span></label>
+                    <input name="lecturer_name" @if ($hasLecturerColumns) required @endif value="{{ old('lecturer_name', $editing ? ($activity['lecturer'] ?? '') : '') }}"
                            placeholder="เช่น ผศ.ดร.สมชาย ใจดี">
-                    <span class="msg"><x-icon name="warn" :size="12" :stroke="2.4" /> {{ $errors->first('lecturer_name') }}</span>
+                    <span class="msg"><x-icon name="warn" :size="12" :stroke="2.4" /> {{ $errors->first('lecturer_name') ?: 'กรอกชื่ออาจารย์ที่รับผิดชอบ' }}</span>
                 </div>
 
                 <div class="f {{ $err('lecturer_phone') }}">
-                    <label>เบอร์โทร</label>
+                    <label>เบอร์โทร <span class="req">*</span></label>
                     <input name="lecturer_phone" id="lecturerPhone" inputmode="numeric"
+                           @if ($hasLecturerColumns) required @endif
                            value="{{ old('lecturer_phone', $editing ? ($activity['lecturer_phone'] ?? '') : '') }}"
                            placeholder="0xx-xxx-xxxx">
                     <span class="hint">ระบบจัดรูปแบบให้อัตโนมัติ</span>
@@ -173,8 +180,9 @@
                 </div>
 
                 <div class="f {{ $err('lecturer_id_card') }}">
-                    <label>เลขประจำตัวประชาชน</label>
+                    <label>เลขประจำตัวประชาชน <span class="req">*</span></label>
                     <input name="lecturer_id_card" id="lecturerIdCard" inputmode="numeric" maxlength="17"
+                           @if ($hasLecturerColumns) required @endif
                            value="{{ old('lecturer_id_card', $editing ? Thai::formatCitizenId($activity['lecturer_id_card'] ?? '') : '') }}"
                            placeholder="x-xxxx-xxxxx-xx-x">
                     <span class="hint" id="idCardHint">13 หลัก · ระบบตรวจหลักสุดท้ายให้</span>
@@ -182,8 +190,9 @@
                 </div>
 
                 <div class="f {{ $err('workload') }}">
-                    <label>ภาระงาน / สัปดาห์</label>
+                    <label>ภาระงาน / สัปดาห์ <span class="req">*</span></label>
                     <input name="workload" type="number" inputmode="decimal" min="0" max="168" step="0.5"
+                           @if ($hasLecturerColumns) required @endif
                            value="{{ old('workload', $editing ? ($activity['workload'] ?? '') : '') }}"
                            placeholder="เช่น 6 หรือ 7.5">
                     <span class="hint">หน่วยเป็นชั่วโมงต่อสัปดาห์ · ใส่ครึ่งชั่วโมงได้</span>
@@ -191,9 +200,32 @@
                         {{ $errors->first('workload') ?: 'ภาระงานต้องเป็นตัวเลข 0–168' }}</span>
                 </div>
 
+                {{-- อยู่ข้าง «ภาระงาน / สัปดาห์» ในแถวเดียวกัน จึงไม่ใช้ full --}}
+                <div class="f">
+                    <label>เจ้าหน้าที่ผู้รับผิดชอบ <span class="req">*</span></label>
+                    @php
+                        $officers = $officerOptions ?? [];
+                        $currentOfficer = old('officer', $editing ? ($activity['officer'] ?? '') : '');
+
+                        if ($currentOfficer !== '' && ! in_array($currentOfficer, $officers, true)) {
+                            array_unshift($officers, $currentOfficer);
+                        }
+                    @endphp
+                    <select name="officer" @if ($hasOfficerOptions) required @endif>
+                        <option value="">— เลือกเจ้าหน้าที่ —</option>
+                        @foreach ($officers as $officerOption)
+                            <option value="{{ $officerOption }}" @selected($currentOfficer === $officerOption)>{{ $officerOption }}</option>
+                        @endforeach
+                    </select>
+                    @unless (count($officers))
+                        <span class="hint">ยังไม่มีรายชื่อ — เพิ่มได้ที่เมนู
+                            <a href="{{ route('staff.index') }}">เจ้าหน้าที่</a></span>
+                    @endunless
+                </div>
+
                 <div class="f full {{ $err('description') }}">
-                    <label>คำอธิบายเกี่ยวกับโครงการ</label>
-                    <textarea name="description" rows="3"
+                    <label>คำอธิบายเกี่ยวกับโครงการ <span class="req">*</span></label>
+                    <textarea name="description" rows="3" @if ($hasLecturerColumns) required @endif
                               placeholder="วัตถุประสงค์ · กลุ่มเป้าหมาย · กิจกรรมที่จะทำ · ผลลัพธ์ที่คาดหวัง">{{ old('description', $editing ? ($activity['description'] ?? '') : '') }}</textarea>
                     <span class="hint">ไม่เกิน 2,000 ตัวอักษร</span>
                     <span class="msg"><x-icon name="warn" :size="12" :stroke="2.4" /> {{ $errors->first('description') }}</span>
