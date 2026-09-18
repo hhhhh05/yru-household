@@ -66,38 +66,6 @@
                 </select>
             </div>
 
-            @php
-                /* ตัวเลือกกิจกรรม — แคบลงตามปีงบ / โครงการหลัก / คณะ ที่เลือกไว้แล้ว
-                   จะได้ไม่มีตัวเลือกที่เลือกแล้วผลลัพธ์ว่างเปล่า */
-                $activityChoices = array_values(array_filter($activities, function ($a) use ($fy, $pg, $unit, $officer) {
-                    if ($fy !== '' && (string) $a['fy'] !== $fy) {
-                        return false;
-                    }
-
-                    if ($pg !== '' && (string) ($a['program_id'] ?? '') !== $pg) {
-                        return false;
-                    }
-
-                    if ($unit !== '' && trim((string) ($a['unit'] ?? '')) !== trim($unit)) {
-                        return false;
-                    }
-
-                    return $officer === '' || trim((string) ($a['officer'] ?? '')) === trim($officer);
-                }));
-            @endphp
-
-            <div class="ff">
-                <span>กิจกรรม</span>
-                <select class="sel" name="pa">
-                    <option value="">ทุกกิจกรรม ({{ count($activityChoices) }})</option>
-                    @foreach ($activityChoices as $choice)
-                        <option value="{{ $choice['pa'] }}" @selected($pa === $choice['pa'])>
-                            {{ $choice['pa'] }} · {{ mb_strlen($choice['name']) > 52 ? mb_substr($choice['name'], 0, 52).'…' : $choice['name'] }}
-                        </option>
-                    @endforeach
-                </select>
-            </div>
-
             <div class="ff">
                 <span>คณะ / หน่วยงาน</span>
                 <select class="sel" name="unit">

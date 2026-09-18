@@ -193,7 +193,182 @@
         </div>
     </div>
 
-    <div class="grid2" style="margin-bottom:16px">
+    {{-- ------------------------------------------------ สรุปสำหรับผู้บริหาร
+         สี่คำถามที่ถูกถามบ่อยที่สุดในที่ประชุม —
+         ครอบคลุมครัวเรือนแค่ไหน · งานเดินถึงไหน · เงินอยู่ปีไหน · อยู่จังหวัดใดมากสุด
+         ใช้โดนัทเพราะเป็น «ส่วนของทั้งหมด» และมีไม่กี่ชิ้น
+         การ์ดตัวเลขด้านบนยังเป็นตัวจริงเหมือนเดิม ส่วนนี้แค่ทำให้เห็นสัดส่วนเร็วขึ้น --}}
+    @php
+        /* สีสถานะผ่านตัวตรวจ palette ทั้งโหมดสว่างและมืด (ΔE ตาบอดสีต่ำสุด 11.0)
+           และทุกชิ้นมีป้ายชื่อกำกับในตารางข้าง ๆ ไม่ได้ใช้สีอย่างเดียวสื่อความหมาย */
+        $statusColor = [
+            'สำเร็จ' => '#128a12',
+            'กำลังดำเนินการ' => '#2a78d6',
+            'รอเริ่ม' => '#c97f05',
+            'ออกกลางคัน' => '#c83535',
+        ];
+
+        $statusSlices = [];
+
+        foreach ($statusCounts as $status => $n) {
+            $statusSlices[] = [
+                'label' => $status,
+                'n' => $n,
+                'color' => $statusColor[$status] ?? '#6b7c73',
+            ];
+        }
+
+        $dropCount = $statusCounts['ออกกลางคัน'] ?? 0;
+        $runningCount = $statusCounts['กำลังดำเนินการ'] ?? 0;
+
+        /* ปีงบเป็นลำดับ ไม่ใช่หมวดหมู่ จึงไล่เฉดเขียวเข้มขึ้นตามปี (ปีล่าสุดเข้มสุด)
+           ไม่ใช้สีคนละวงศ์ เพราะจะอ่านเหมือนคนละเรื่องกัน */
+        $greenRamp = ['#7ec9a8', '#4bb68b', '#1f9a6d', '#0b8253', '#045c39'];
+        $budgetYearsSorted = array_keys($budgetByYear);
+        sort($budgetYearsSorted);
+        $budgetSlices = [];
+
+        foreach ($budgetYearsSorted as $i => $fy) {
+            $step = count($budgetYearsSorted) > 1
+                ? (int) round($i / (count($budgetYearsSorted) - 1) * (count($greenRamp) - 1))
+                : count($greenRamp) - 2;
+
+            $budgetSlices[] = [
+                'label' => 'ปีงบ '.$fy,
+                'n' => $budgetByYear[$fy],
+                'color' => $greenRamp[$step],
+            ];
+        }
+
+        /* ปีงบที่ใช้งบสูงสุด — ใช้เขียนบรรทัดสรุปใต้วง */
+        $topBudgetYear = null;
+
+        foreach ($budgetByYear as $fy => $b) {
+            if ($topBudgetYear === null || $b > $budgetByYear[$topBudgetYear]) {
+                $topBudgetYear = $fy;
+            }
+        }
+
+        /* ครัวเรือนตามจังหวัด — สามสีเดียวกับกราฟแท่งด้านล่าง (สีผูกกับสิ่งที่มันแทน)
+           เกินสามจังหวัดยุบเป็น «จังหวัดอื่น ๆ» ไม่สร้างสีใหม่เพิ่มเรื่อย ๆ */
+        $provRows = $areaLevels['prov'];
+        $provPalette = ['#2a78d6', '#eb6834', '#1baf7a'];
+        $provSlices = [];
+        $provOther = 0;
+
+        foreach ($provRows as $i => $row) {
+            if ($i < count($provPalette)) {
+                $provSlices[] = ['label' => $row['name'], 'n' => $row['n'], 'color' => $provPalette[$i]];
+            } else {
+                $provOther += $row['n'];
+            }
+        }
+
+        if ($provOther) {
+            $provSlices[] = ['label' => 'จังหวัดอื่น ๆ', 'n' => $provOther, 'color' => '#8d9c94'];
+        }
+
+        /* จังหวัดที่มีครัวเรือนมากที่สุด — ต้องหาเอง เพราะรายการเรียงตามชื่อจังหวัด ไม่ใช่ตามจำนวน */
+        $topProv = null;
+
+        foreach ($provRows as $row) {
+            if ($topProv === null || $row['n'] > $topProv['n']) {
+                $topProv = $row;
+            }
+        }
+    @endphp
+
+    <div class="sec-h">
+        <h3>สรุปสำหรับผู้บริหาร</h3>
+        <span>สัดส่วนจากข้อมูลจริงในระบบ ณ ตอนนี้ · ชี้ที่วงเพื่อดูตัวเลขรายชิ้น</span>
+    </div>
+
+    <div class="dset">
+        <div class="card">
+            <div class="card-h">
+                <div style="flex:1">
+                    <h3>ความครอบคลุมครัวเรือน</h3>
+                    <p>ทะเบียนทั้งหมด {{ Thai::fmt($total) }} ครัวเรือน</p>
+                </div>
+                <a class="btn out sm" href="{{ route('households.index') }}">ดูทะเบียน</a>
+            </div>
+            <div class="card-b">
+                <x-donut title="ความครอบคลุมครัวเรือน" unit="ครัวเรือน"
+                         :center="$total ? round($enrolledCount / $total * 100).'%' : '—'"
+                         center-label="เข้าร่วมแล้ว"
+                         :center-sub="Thai::fmt($enrolledCount).' / '.Thai::fmt($total)"
+                         :note="$notEnrolled
+                             ? 'ยังไม่เข้าร่วมอีก '.Thai::fmt($notEnrolled).' ครัวเรือน · เป้าหมายทะเบียนปีนี้ '.Thai::fmt($target).' ครัวเรือน'
+                             : 'ครัวเรือนในทะเบียนเข้าร่วมกิจกรรมครบทุกหลังแล้ว'"
+                         :slices="[
+                             ['label' => 'เข้าร่วมแล้ว', 'n' => $enrolledCount, 'color' => '#0b8253'],
+                             ['label' => 'ยังไม่เข้าร่วม', 'n' => $notEnrolled, 'color' => '#b3c2ba'],
+                         ]" />
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-h">
+                <div style="flex:1">
+                    <h3>สถานะการดำเนินงาน</h3>
+                    <p>รายการลงทะเบียนทั้งระบบ {{ Thai::fmt($enrollmentCount) }} รายการ</p>
+                </div>
+                <a class="btn out sm" href="{{ route('enrollments.index') }}">ดูรายชื่อ</a>
+            </div>
+            <div class="card-b">
+                <x-donut title="สถานะการดำเนินงาน" unit="รายการ"
+                         :center="$enrollmentCount ? round($doneCount / $enrollmentCount * 100).'%' : '—'"
+                         center-label="สำเร็จแล้ว"
+                         :center-sub="Thai::fmt($doneCount).' / '.Thai::fmt($enrollmentCount)"
+                         :note="'กำลังดำเนินการ '.Thai::fmt($runningCount).' รายการ'
+                             .($dropCount ? ' · ออกกลางคัน '.Thai::fmt($dropCount).' รายการ ควรตามสาเหตุ' : ' · ยังไม่มีผู้ออกกลางคัน')"
+                         :slices="$statusSlices" />
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-h">
+                <div style="flex:1">
+                    <h3>สัดส่วนงบประมาณตามปีงบ</h3>
+                    <p>{{ Thai::fmt($activityCount) }} กิจกรรม ภายใต้ยุทธศาสตร์ที่ 1</p>
+                </div>
+                <a class="btn out sm" href="{{ route('activities.index') }}">ดูโครงการ</a>
+            </div>
+            <div class="card-b">
+                <x-donut title="สัดส่วนงบประมาณตามปีงบ" unit="บาท"
+                         :center="$topBudgetYear ? round($budgetByYear[$topBudgetYear] / max(1, $budget) * 100).'%' : '—'"
+                         :center-label="$topBudgetYear ? 'ปีงบ '.$topBudgetYear : 'ยังไม่มีข้อมูล'"
+                         center-sub="สัดส่วนงบสูงสุด"
+                         :note="$topBudgetYear
+                             ? 'ปีงบ '.$topBudgetYear.' ใช้งบมากที่สุด '.Thai::fmt($budgetByYear[$topBudgetYear]).' บาท'
+                                 .' ('.round($budgetByYear[$topBudgetYear] / max(1, $budget) * 100).'% ของทั้งหมด)'
+                             : 'ยังไม่มีข้อมูลงบประมาณ'"
+                         :slices="$budgetSlices" />
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-h">
+                <div style="flex:1">
+                    <h3>ครัวเรือนตามจังหวัด</h3>
+                    <p>ครอบคลุม {{ Thai::fmt($areaCounts['prov']) }} จังหวัด ·
+                        {{ Thai::fmt($areaCounts['tam']) }} ตำบล</p>
+                </div>
+            </div>
+            <div class="card-b">
+                <x-donut title="ครัวเรือนตามจังหวัด" unit="ครัวเรือน"
+                         :center="Thai::fmt($total)" center-label="ครัวเรือน"
+                         :center-sub="Thai::fmt($areaCounts['prov']).' จังหวัด'"
+                         :note="$topProv
+                             ? $topProv['name'].' มากที่สุด '.Thai::fmt($topProv['n']).' ครัวเรือน'
+                                 .' ('.round($topProv['n'] / max(1, $total) * 100).'% ของทะเบียน)'
+                             : 'ยังไม่มีข้อมูลพื้นที่'"
+                         :slices="$provSlices" />
+            </div>
+        </div>
+    </div>
+
+    <div style="margin-bottom:16px">
         {{-- ------------------------------------------- ครัวเรือนตามชั้นพื้นที่
              แยกสามชั้น จังหวัด → อำเภอ → ตำบล (ไม่ลงถึงหมู่บ้าน)
              แต่ละชั้นสเกลแท่งด้วยค่าสูงสุดของชั้นตัวเอง ไม่ใช่ค่าสูงสุดรวม
@@ -242,67 +417,8 @@
                 @endforeach
             </div>
         </div>
-
-        {{-- ----------------------------------------- งบประมาณตามปีงบประมาณ --}}
-        <div class="card">
-            <div class="card-h">
-                <div style="flex:1">
-                    <h3>งบประมาณตามปีงบประมาณ</h3>
-                    <p>รวม {{ Thai::fmt($activityCount) }} กิจกรรม ภายใต้ยุทธศาสตร์ที่ 1</p>
-                </div>
-                <a class="btn out sm" href="{{ route('activities.index') }}">จัดการโครงการ</a>
-            </div>
-            <div class="card-b">
-                @foreach ($budgetByYear as $fy => $b)
-                    @php $n = count(array_filter($activities, fn ($p) => $p['fy'] == $fy)); @endphp
-                    <div style="margin-bottom:15px">
-                        <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px">
-                            <b style="font-size:13.5px;font-weight:600">ปีงบ {{ $fy }}</b>
-                            <span style="font-size:12px;color:var(--ink-3)">{{ $n }} กิจกรรม</span>
-                            <span style="margin-left:auto;font-weight:600;font-variant-numeric:tabular-nums">
-                                {{ Thai::fmt($b) }}
-                                <span style="font-weight:400;color:var(--ink-3);font-size:12px">บาท</span>
-                            </span>
-                        </div>
-                        <div class="meter" data-tip="<b>ปีงบ {{ $fy }}</b>{{ Thai::fmt($b) }} บาท · {{ $n }} กิจกรรม">
-                            <i style="width:{{ round($b / max(1, $maxYearBudget) * 100, 1) }}%"></i>
-                        </div>
-                    </div>
-                @endforeach
-
-                <hr class="sep">
-                <div style="display:flex;align-items:baseline">
-                    <span style="font-size:13px;color:var(--ink-2)">รวมทั้งสิ้น</span>
-                    <b style="margin-left:auto;font-size:17px;font-weight:600;font-variant-numeric:tabular-nums">{{ Thai::fmt($budget) }}</b>
-                    <span style="font-size:12px;color:var(--ink-3);margin-left:5px">บาท</span>
-                </div>
-            </div>
-        </div>
     </div>
 
-    {{-- ------------------------------------------------ ประเด็นที่ควรตรวจสอบ --}}
-    <div class="card">
-        <div class="card-h">
-            <span style="color:var(--critical-ink)"><x-icon name="shield" :size="18" :stroke="2" /></span>
-            <div style="flex:1">
-                <h3>รายการที่ควรตรวจสอบก่อนใช้ข้อมูล</h3>
-                <p>ตรวจพบ {{ count($issues) }} ประเด็นจากข้อมูลจริงในชีต —
-                    {{ $criticalCount }} รายการวิกฤต, {{ $seriousCount }} รายการควรแก้เร็ว</p>
-            </div>
-            <a class="btn pri sm" href="{{ route('quality.index') }}">เปิดหน้าตรวจสอบ</a>
-        </div>
-
-        <div>
-            @foreach (array_slice($issues, 0, 5) as $issue)
-                <x-issue :issue="$issue" />
-            @endforeach
-        </div>
-
-        <div class="card-f">
-            <span style="font-size:12.5px;color:var(--ink-3)">แสดง 5 จาก {{ count($issues) }} รายการ</span>
-            <a class="btn ghost sm" style="margin-left:auto" href="{{ route('quality.index') }}">
-                ดูทั้งหมด <x-icon name="link" :size="13" :stroke="2.2" />
-            </a>
-        </div>
-    </div>
+    {{-- การ์ด «รายการที่ควรตรวจสอบก่อนใช้ข้อมูล» ถูกซ่อนตามที่ผู้ใช้ขอ
+         ข้อมูลยังคำนวณอยู่และดูได้เต็ม ๆ ที่เมนู «ตรวจสอบคุณภาพข้อมูล» --}}
 @endsection
