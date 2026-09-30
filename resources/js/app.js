@@ -184,6 +184,24 @@ function initOverlays() {
     /* เลือกโครงการหลัก → กรองรายการกิจกรรมในหน้าต่างเพิ่มเข้ากิจกรรม */
     document.addEventListener('change', (e) => {
         if (e.target.id === 'enrollProgram') filterEnrollActivities();
+
+        if (e.target.id === 'programStatus') {
+            syncProgramReport(e.target.closest('.modal'));
+        }
+
+        /* ไฟล์ที่ใหญ่เกิน post_max_size จะถูก PHP ทิ้งก่อนถึงโค้ดของเรา
+           กดบันทึกแล้วจะเงียบสนิท จึงต้องกันไว้ตั้งแต่ตอนเลือกไฟล์ */
+        if (e.target.id === 'programReport' || e.target.id === 'programDoc') {
+            const max = Number(e.target.dataset.maxBytes || 0);
+            const picked = e.target.files && e.target.files[0];
+
+            if (picked && max && picked.size > max) {
+                e.target.value = '';
+                toast('ไฟล์ใหญ่เกินไป',
+                    'เครื่องนี้รับได้ไม่เกิน ' + Math.round(max / 1048576 * 10) / 10 + ' MB — ย่อไฟล์ก่อนแนบ',
+                    'err');
+            }
+        }
     });
 
     /* ปุ่มแก้ไขในแถวรายชื่อเข้าร่วม */
@@ -410,7 +428,13 @@ function prepareRecordModal(modal, data, cfg) {
     }
 
     Object.entries(cfg.fields).forEach(([selector, key]) => {
-        setFieldValue(modal.querySelector(selector), editing ? (d[key] || '') : '');
+        const field = modal.querySelector(selector);
+
+        if (!field) return;
+
+        /* โหมดเพิ่ม = กลับไปค่าตั้งต้นที่หน้าเว็บกำหนดไว้ (เช่น ปีงบปัจจุบัน)
+           ไม่ใช่ค่าว่างเสมอ ไม่งั้นค่าตั้งต้นที่ตั้งใจใส่ไว้จะถูกล้างทิ้งทุกครั้งที่เปิด */
+        setFieldValue(field, editing ? (d[key] || '') : (field.defaultValue || ''));
     });
 
     const title = modal.querySelector(cfg.title);
@@ -433,6 +457,15 @@ function setFieldValue(field, value) {
     if (field.tagName === 'SELECT') {
         /* ตัวเลือกชั่วคราวของรอบก่อน เอาออกก่อนเสมอ */
         field.querySelector('option[data-adhoc]')?.remove();
+
+        /* ไม่มีค่าที่จะใส่ และรายการนี้ไม่มีตัวเลือกว่าง → กลับไปตัวเลือกแรก
+           (เช่นช่องสถานะที่ค่าเริ่มต้นคือ «กำลังดำเนินการ») ถ้าปล่อยเป็นค่าว่าง
+           ช่องจะกลายเป็นไม่มีอะไรถูกเลือก ทั้งที่เป็นช่องบังคับ */
+        if (value === '' && ! [...field.options].some((o) => o.value === '')) {
+            field.selectedIndex = 0;
+
+            return;
+        }
 
         const has = [...field.options].some((o) => o.value === value);
 
@@ -469,6 +502,84 @@ const STAFF_MODAL = {
         '#staffEmail': 'staffEmail',
     },
 };
+
+const PROGRAM_MODAL = {
+    modal: 'm-program',
+    form: '#programForm',
+    method: '#programMethod',
+    idKey: 'programId',
+    storeUrl: '#program-store-url',
+    updateUrl: '#program-update-url',
+    title: '#programTitle',
+    sub: '#programSub',
+    titleNew: 'เพิ่มโครงการหลัก',
+    titleEdit: 'แก้ไขโครงการหลัก',
+    subNew: 'กิจกรรมจะยึดปีงบตามโครงการนี้',
+    subEdit: 'เปลี่ยนปีงบที่นี่ กิจกรรมใต้โครงการจะถูกย้ายตาม',
+    fields: {
+        '#programName': 'programName',
+        '#programFy': 'programFy',
+        '#programLead': 'programLead',
+        '#programUnit': 'programUnit',
+        '#programStatus': 'programStatus',
+    },
+};
+
+/**
+ * ช่องแนบเล่มรายงานของหน้าต่างโครงการหลัก
+ *
+ * เปิดเฉพาะตอนเลือก «ปิดโครงการ» และบังคับแนบเฉพาะกรณีที่ยังไม่เคยมีเล่มเดิม
+ * ถ้าเคยแนบแล้ว เว้นว่างไว้ = ใช้เล่มเดิมต่อ ไม่ต้องอัปโหลดซ้ำทุกครั้งที่แก้ชื่อ
+ */
+function prepareProgramReport(modal, data) {
+    if (modal.id !== 'm-program') return;
+
+    const input = modal.querySelector('#programReport');
+
+    if (!input) return;      // ยังไม่ได้รันอัปเดตฐานข้อมูล จึงไม่มีช่องนี้
+
+    input.value = '';
+    modal.dataset.hasReport = (data && data.programReport) ? '1' : '';
+    syncProgramReport(modal);
+
+    /* ช่องไฟล์โครงการ — ล้างของรอบก่อน แล้วบอกให้รู้ว่ามีไฟล์เดิมแนบอยู่ไหม */
+    const doc = modal.querySelector('#programDoc');
+    const docHint = modal.querySelector('#programDocHint');
+
+    if (doc) doc.value = '';
+
+    if (docHint) {
+        docHint.textContent = (data && data.programDoc)
+            ? 'มีไฟล์แนบอยู่แล้ว (' + data.programDoc + ') — เลือกไฟล์ใหม่เฉพาะเมื่อต้องการแทนที่'
+            : 'เอกสารโครงการฉบับเต็ม · ไฟล์ PDF หรือ Word · ไม่บังคับ';
+    }
+}
+
+function syncProgramReport(modal) {
+    const status = modal.querySelector('#programStatus');
+    const box = modal.querySelector('#programReportBox');
+    const input = modal.querySelector('#programReport');
+    const hint = modal.querySelector('#programReportHint');
+
+    if (!status || !box || !input) return;
+
+    const closing = status.value === 'ปิดโครงการ';
+    const hasReport = modal.dataset.hasReport === '1';
+
+    box.hidden = !closing;
+    /* ปิด required ตอนซ่อน ไม่งั้นเบราว์เซอร์จะบล็อกการกดบันทึกโดยไม่บอกว่าติดตรงไหน */
+    input.required = closing && !hasReport;
+
+    const limit = Number(input.dataset.maxBytes || 0);
+
+    if (hint) {
+        const mb = limit ? Math.round(limit / 1048576 * 10) / 10 + ' MB' : '';
+
+        hint.textContent = hasReport
+            ? 'มีเล่มรายงานแนบไว้แล้ว — เลือกไฟล์ใหม่เฉพาะเมื่อต้องการแทนที่ของเดิม'
+            : 'ไฟล์ PDF' + (mb ? ' ไม่เกิน ' + mb : '') + ' · จำเป็นต้องแนบเมื่อปิดโครงการ';
+    }
+}
 
 const UNIT_MODAL = {
     modal: 'm-unit',
@@ -629,6 +740,8 @@ function openJsModal(id, only, data) {
     prepareEnrollModal(m, only, data);
     prepareRecordModal(m, data, STAFF_MODAL);
     prepareRecordModal(m, data, UNIT_MODAL);
+    prepareRecordModal(m, data, PROGRAM_MODAL);
+    prepareProgramReport(m, data);
 
     /* เติมรายการที่เลือกไว้ลงในฟอร์ม — หรือรายการเดียวถ้าเปิดจากปุ่มในแถว */
     const selected = only ? [only] : currentSelection();

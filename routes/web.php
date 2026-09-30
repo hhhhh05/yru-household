@@ -9,6 +9,7 @@ use App\Http\Controllers\EnrollmentController;
 use App\Http\Controllers\ExportController;
 use App\Http\Controllers\HouseholdController;
 use App\Http\Controllers\ImportExportController;
+use App\Http\Controllers\ProgramController;
 use App\Http\Controllers\SetupController;
 use App\Http\Controllers\StaffController;
 use App\Http\Controllers\UnitController;
@@ -64,7 +65,15 @@ Route::prefix('households')->name('households.')->group(function () {
     Route::delete('/{hc}', [HouseholdController::class, 'destroy'])->name('destroy');
 });
 
-/* ---------------------------------------------------- โครงการ / กิจกรรม ---- */
+/* ------------------------------------------------------- โครงการหลัก ---- */
+Route::prefix('programs')->name('programs.')->group(function () {
+    Route::get('/', [ProgramController::class, 'index'])->name('index');
+    Route::post('/', [ProgramController::class, 'store'])->name('store');
+    Route::patch('/{id}', [ProgramController::class, 'update'])->name('update');
+    Route::delete('/{id}', [ProgramController::class, 'destroy'])->name('destroy');
+});
+
+/* ------------------------------------------------------------ กิจกรรม ---- */
 Route::prefix('activities')->name('activities.')->group(function () {
     Route::get('/', [ActivityController::class, 'index'])->name('index');
     Route::get('/create', [ActivityController::class, 'create'])->name('create');

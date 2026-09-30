@@ -15,7 +15,7 @@ use App\Repositories\HouseholdRepository;
 class Nav
 {
     /** เมนูที่แสดงในแถบด้านซ้าย (ตามต้นฉบับ แสดงเพียง 4 หัวข้อหลัก) */
-    public const SIDEBAR = ['home', 'hh', 'pj', 'en'];
+    public const SIDEBAR = ['home', 'hh', 'pgm', 'pj', 'en'];
 
     /** @return array<string, array<string, mixed>> */
     public static function items(): array
@@ -36,10 +36,19 @@ class Nav
                 'route' => 'households.index',
                 'count' => 'households',
             ],
-            'pj' => [
+            'pgm' => [
                 'icon' => 'box',
-                'title' => 'โครงการ / กิจกรรม',
-                'desc' => 'กิจกรรมภายใต้ยุทธศาสตร์ที่ 1 และงบประมาณรายปี',
+                'title' => 'โครงการหลัก',
+                'desc' => 'ร่มของกิจกรรม แยกตามปีงบประมาณ',
+                'group' => '',
+                'route' => 'programs.index',
+                'count' => 'programs',
+            ],
+            'pj' => [
+                'icon' => 'sheet',
+                'title' => 'กิจกรรม',
+                'nav' => 'กิจกรรม',
+                'desc' => 'กิจกรรมภายใต้โครงการหลัก และงบประมาณรายกิจกรรม',
                 'group' => '',
                 'route' => 'activities.index',
                 'count' => 'activities',
@@ -110,6 +119,7 @@ class Nav
         return match ($kind) {
             'households' => count(app(HouseholdRepository::class)->all()),
             'activities' => count(app(ActivityRepository::class)->all()),
+            'programs' => \App\Models\Program::count(),
             'enrollments' => count(app(EnrollmentRepository::class)->all()),
             'areas' => count(app(AreaRepository::class)->all()),
             /* ตารางอาจยังไม่ถูกสร้าง (ยังไม่ได้รัน migration) — เมนูต้องไม่พัง */

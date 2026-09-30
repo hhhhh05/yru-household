@@ -5,12 +5,15 @@
 @section('content')
     <div class="page-head">
         <div class="lead">
-            <h2>โครงการ / กิจกรรม</h2>
-            <p>แบ่งเป็น ปีงบประมาณ → โครงการหลัก → กิจกรรม ·
-                {{ Thai::fmt($totalCount) }} กิจกรรม · งบรวม {{ Thai::fmt($totalBudget) }} บาท ·
+            <h2>กิจกรรม</h2>
+            <p>{{ Thai::fmt($totalCount) }} กิจกรรม · งบรวม {{ Thai::fmt($totalBudget) }} บาท ·
+                จัดกลุ่มตามโครงการหลักที่สังกัด ·
                 รหัส PA = LP + ปีงบ + ลำดับโครงการ + ลำดับกิจกรรม</p>
         </div>
 
+        <a class="btn out" href="{{ route('programs.index') }}">
+            <x-icon name="box" :size="15" :stroke="2.2" /> โครงการหลัก
+        </a>
         <a class="btn out" href="{{ route('export', 'activities') }}">
             <x-icon name="down" :size="15" :stroke="2.2" /> ส่งออก
         </a>
