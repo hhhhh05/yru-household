@@ -29,11 +29,32 @@ class ProgramController extends Controller
     {
         $fy = (string) $request->query('fy', '');
 
+        /* ค่าเริ่มต้นของหน้าแรก = เห็นเฉพาะโครงการที่ยังเดินอยู่
+           โครงการที่ปิดแล้วไม่ได้หายไปไหน เลือกจากช่องสถานะเพื่อดูได้ตลอด
+           ('all' = ทุกสถานะ — ต้องเลือกเอง ไม่ใช่ค่าตั้งต้น) */
+        $statusReady = Schema::hasColumn('programs', 'status');
+        $st = (string) $request->query('st', Program::STATUS_OPEN);
+
+        if (! $statusReady || ! in_array($st, [...Program::STATUSES, 'all'], true)) {
+            $st = 'all';
+        }
+
         $programs = Program::orderByDesc('fiscal_year')->orderBy('name')->get();
 
         if ($fy !== '') {
             $programs = $programs->filter(fn ($p) => (string) $p->fiscal_year === $fy)->values();
         }
+
+        if ($st !== 'all') {
+            $programs = $programs
+                ->filter(fn ($p) => ($p->status ?: Program::STATUS_OPEN) === $st)
+                ->values();
+        }
+
+        /* จำนวนที่ถูกซ่อนเพราะตัวกรองสถานะ — บอกไว้ในหน้า จะได้ไม่งงว่าโครงการหายไปไหน */
+        $hiddenByStatus = $statusReady && $st !== 'all'
+            ? Program::when($fy !== '', fn ($q) => $q->where('fiscal_year', $fy))->count() - count($programs)
+            : 0;
 
         /* สรุปต่อโครงการ — จำนวนกิจกรรม · งบรวม · จำนวนรายการลงทะเบียน
            วนจากชุดข้อมูลที่โหลดไว้แล้วครั้งเดียว ไม่ยิงคิวรีต่อแถว */
@@ -41,10 +62,13 @@ class ProgramController extends Controller
         $budget = [];
         $enrolled = [];
 
+        /* นับเฉพาะโครงการที่แสดงอยู่ ตัวเลขในการ์ดสรุปจะได้ตรงกับตารางข้างล่าง */
+        $shown = $programs->pluck('id')->all();
+
         foreach ($this->activities->all() as $activity) {
             $id = $activity['program_id'] ?? null;
 
-            if (! $id) {
+            if (! $id || ! in_array($id, $shown)) {
                 continue;
             }
 
@@ -59,6 +83,8 @@ class ProgramController extends Controller
         return view('programs.index', [
             'navKey' => 'pgm',
             'fy' => $fy,
+            'st' => $st,
+            'hiddenByStatus' => max(0, $hiddenByStatus),
             'programs' => $programs,
             'fiscalYears' => $this->activities->yearOptions(),   /* ยึดจากตาราง programs ปีที่ยังไม่มีกิจกรรมจึงไม่หาย */
             'activityCount' => $activityCount,
@@ -69,7 +95,7 @@ class ProgramController extends Controller
             'statuses' => Program::STATUSES,
             /* ยังไม่ได้รัน migration = ยังไม่มีคอลัมน์สถานะ/เล่มรายงาน
                หน้าต้องเปิดได้ตามปกติ แค่ซ่อนส่วนนั้นไว้ก่อน */
-            'statusReady' => Schema::hasColumn('programs', 'status'),
+            'statusReady' => $statusReady,
             /* ขีดจำกัดจริงของ PHP บนเครื่องนี้ — เอาไปบอกผู้ใช้และกันไว้ฝั่งเบราว์เซอร์
                ไฟล์ที่ใหญ่เกิน post_max_size จะถูก PHP ทิ้งตั้งแต่ก่อนถึง Laravel
                ผลคือฟอร์ม «กดบันทึกแล้วเงียบ» โดยไม่มีข้อความอะไรเลย */

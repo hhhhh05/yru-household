@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@php use App\Support\Thai; @endphp
+@php use App\Models\Program; use App\Support\Thai; @endphp
 
 @section('content')
     <div class="page-head">
@@ -81,15 +81,31 @@
                 </select>
             </div>
 
+            @if ($statusReady)
+                {{-- ค่าตั้งต้นคือ «กำลังดำเนินการ» — หน้าแรกจึงเห็นเฉพาะโครงการที่ยังเดินอยู่ --}}
+                <div class="ff">
+                    <span>สถานะ</span>
+                    <select class="sel" name="st">
+                        @foreach ($statuses as $status)
+                            <option value="{{ $status }}" @selected($st === $status)>{{ $status }}</option>
+                        @endforeach
+                        <option value="all" @selected($st === 'all')>ทุกสถานะ</option>
+                    </select>
+                </div>
+            @endif
+
             <span style="flex:1"></span>
 
             <span style="font-size:12.5px;color:var(--ink-3)">
                 แสดง {{ Thai::fmt(count($programs)) }} โครงการ{{ $fy !== '' ? ' · ปีงบ '.$fy : ' · ทุกปีงบ' }}
+                @if ($hiddenByStatus)
+                    · ซ่อนไว้ {{ Thai::fmt($hiddenByStatus) }} โครงการ
+                @endif
             </span>
 
-            @if ($fy !== '')
+            @if ($fy !== '' || ($statusReady && $st !== Program::STATUS_OPEN))
                 <a class="btn ghost sm" href="{{ route('programs.index') }}">
-                    <x-icon name="x" :size="14" :stroke="2.4" /> ล้างตัวกรอง
+                    <x-icon name="x" :size="14" :stroke="2.4" /> กลับค่าเริ่มต้น
                 </a>
             @endif
         </form>
@@ -162,7 +178,7 @@
                             <td>
                                 {{-- ปิดโครงการ = ป้ายแดง ให้กวาดตาเห็นได้ทันทีว่าโครงการไหนจบแล้ว --}}
                                 <span class="bg {{ $program->isClosed() ? 'b-crit' : 'b-brand' }}">
-                                    {{ $program->status ?: \App\Models\Program::STATUS_OPEN }}
+                                    {{ $program->status ?: Program::STATUS_OPEN }}
                                 </span>
                                 @if ($program->isClosed() && $program->closed_at)
                                     <div class="t-sub">ปิดเมื่อ {{ Thai::date($program->closed_at) }}</div>
@@ -213,7 +229,7 @@
                                         data-program-fy="{{ $program->fiscal_year }}"
                                         data-program-lead="{{ $program->lead_name }}"
                                         data-program-unit="{{ $program->unit }}"
-                                        data-program-status="{{ $program->status ?: \App\Models\Program::STATUS_OPEN }}"
+                                        data-program-status="{{ $program->status ?: Program::STATUS_OPEN }}"
                                         data-program-report="{{ $program->report_name }}"
                                         data-program-doc="{{ $program->doc_name }}" title="แก้ไข">
                                     <x-icon name="edit" :size="15" :stroke="2" />
@@ -237,8 +253,9 @@
                         <td colspan="{{ ($statusReady ? 8 : 6) + ($leadReady ? 2 : 0) + ($docReady ? 1 : 0) }}">
                             <div class="empty">
                                 <div class="ic"><x-icon name="box" :size="22" :stroke="1.9" /></div>
-                                <b>ยังไม่มีโครงการหลัก{{ $fy !== '' ? 'ในปีงบ '.$fy : '' }}</b>
-                                <p>กดปุ่ม «เพิ่มโครงการหลัก» ด้านบนเพื่อเริ่ม แล้วค่อยเพิ่มกิจกรรมภายใต้โครงการนั้น</p>
+                                <b>ไม่พบโครงการหลัก{{ $statusReady && $st !== 'all' ? 'ที่สถานะ «'.$st.'»' : '' }}{{ $fy !== '' ? ' ในปีงบ '.$fy : '' }}</b>
+                                <p>เปลี่ยนช่องสถานะเป็น «ทุกสถานะ» เพื่อดูโครงการที่ปิดแล้ว
+    หรือกดปุ่ม «เพิ่มโครงการหลัก» ด้านบนเพื่อเริ่มโครงการใหม่</p>
                             </div>
                         </td>
                     </tr>
