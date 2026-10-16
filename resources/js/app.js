@@ -185,13 +185,17 @@ function initOverlays() {
     document.addEventListener('change', (e) => {
         if (e.target.id === 'enrollProgram') filterEnrollActivities();
 
+        if (e.target.id === 'staffProgram') {
+            filterStaffActivities(e.target.closest('.modal'));
+        }
+
         if (e.target.id === 'programStatus') {
             syncProgramReport(e.target.closest('.modal'));
         }
 
         /* ไฟล์ที่ใหญ่เกิน post_max_size จะถูก PHP ทิ้งก่อนถึงโค้ดของเรา
            กดบันทึกแล้วจะเงียบสนิท จึงต้องกันไว้ตั้งแต่ตอนเลือกไฟล์ */
-        if (e.target.id === 'programReport' || e.target.id === 'programDoc') {
+        if (e.target.id === 'programReport' || e.target.id === 'programDoc' || e.target.id === 'staffContract') {
             const max = Number(e.target.dataset.maxBytes || 0);
             const picked = e.target.files && e.target.files[0];
 
@@ -498,10 +502,80 @@ const STAFF_MODAL = {
         '#staffName': 'staffName',
         '#staffPosition': 'staffPosition',
         '#staffUnit': 'staffUnit',
+        '#staffProgram': 'staffProgram',
+        '#staffSalary': 'staffSalary',
         '#staffPhone': 'staffPhone',
         '#staffEmail': 'staffEmail',
     },
 };
+
+/**
+ * หน้าต่างเจ้าหน้าที่ — ส่วนงานที่รับผิดชอบและสัญญาจ้าง
+ *
+ * กิจกรรมถูกกรองตามโครงการที่เลือก (ตั้งค่าหลัง prepareRecordModal เพราะต้องกรองก่อนใส่ค่า
+ * ไม่งั้นตัวเลือกของกิจกรรมที่ถูกซ่อนอยู่จะรับค่าไม่ได้)
+ */
+function prepareStaffJob(modal, data) {
+    if (modal.id !== 'm-staff') return;
+
+    const program = modal.querySelector('#staffProgram');
+    const activity = modal.querySelector('#staffActivity');
+
+    if (program && activity) {
+        filterStaffActivities(modal);
+        setFieldValue(activity, (data && data.staffActivity) || '');
+    }
+
+    /* ไฟล์สัญญา — ล้างของรอบก่อน แล้วบอกว่ามีไฟล์เดิมอยู่ไหม */
+    const contract = modal.querySelector('#staffContract');
+    const hint = modal.querySelector('#staffContractHint');
+
+    if (contract) contract.value = '';
+
+    if (hint) {
+        const max = Number(contract?.dataset.maxBytes || 0);
+        const mb = max ? Math.round(max / 1048576 * 10) / 10 + ' MB' : '';
+
+        hint.textContent = (data && data.staffContract)
+            ? 'มีสัญญาแนบอยู่แล้ว (' + data.staffContract + ') — เลือกไฟล์ใหม่เฉพาะเมื่อต้องการแทนที่'
+            : 'ไม่บังคับ · ไฟล์ PDF หรือ Word' + (mb ? ' ไม่เกิน ' + mb : '');
+    }
+}
+
+/** แสดงเฉพาะกิจกรรมของโครงการที่เลือก — ไม่เลือกโครงการ = เห็นทุกกิจกรรม */
+function filterStaffActivities(modal) {
+    const program = modal.querySelector('#staffProgram');
+    const activity = modal.querySelector('#staffActivity');
+
+    if (!program || !activity) return;
+
+    const want = program.value;
+    let matches = 0;
+
+    [...activity.options].forEach((opt) => {
+        if (opt.value === '') return;      // ตัวเลือก «ทั้งโครงการ» ไม่ต้องกรอง
+
+        const show = !want || opt.dataset.program === want;
+        opt.hidden = !show;
+        opt.disabled = !show;
+
+        if (show) matches++;
+    });
+
+    const placeholder = activity.querySelector('option[value=""]');
+
+    if (placeholder) {
+        placeholder.textContent = want && !matches
+            ? '— โครงการนี้ยังไม่มีกิจกรรม —'
+            : '— ทั้งโครงการ / ไม่เจาะจง —';
+    }
+
+    /* กิจกรรมที่ค้างอยู่ไม่อยู่ในโครงการที่เพิ่งเลือก → กลับไปค่าว่าง
+       ไม่เดาให้เอง เพราะคู่ที่ขัดกันจะถูกฝั่งเซิร์ฟเวอร์ทิ้งอยู่ดี */
+    const current = activity.selectedOptions[0];
+
+    if (current && current.hidden) activity.value = '';
+}
 
 const PROGRAM_MODAL = {
     modal: 'm-program',
@@ -739,6 +813,7 @@ function openJsModal(id, only, data) {
 
     prepareEnrollModal(m, only, data);
     prepareRecordModal(m, data, STAFF_MODAL);
+    prepareStaffJob(m, data);
     prepareRecordModal(m, data, UNIT_MODAL);
     prepareRecordModal(m, data, PROGRAM_MODAL);
     prepareProgramReport(m, data);

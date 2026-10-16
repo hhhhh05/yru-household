@@ -64,7 +64,7 @@ class ActivityController extends Controller
             'name' => trim($v['name']),
             'budget' => $v['budget'],
             'unit' => $v['unit'] ?? null,
-            'officer' => $v['officer'] ?? null,
+            ...$this->officerFields($v),
             'lecturer_name' => $v['lecturer_name'] ?? null,
             'lecturer_phone' => $v['lecturer_phone'] ?? null,
             'lecturer_id_card' => $v['lecturer_id_card'] ?? null,
@@ -97,7 +97,7 @@ class ActivityController extends Controller
             'name' => trim($v['name']),
             'budget' => $v['budget'],
             'unit' => $v['unit'] ?? null,
-            'officer' => $v['officer'] ?? null,
+            ...$this->officerFields($v),
             'lecturer_name' => $v['lecturer_name'] ?? null,
             'lecturer_phone' => $v['lecturer_phone'] ?? null,
             'lecturer_id_card' => $v['lecturer_id_card'] ?? null,
@@ -139,6 +139,30 @@ class ActivityController extends Controller
      * @param  array<string, mixed>  $data
      * @return array<string, mixed>
      */
+    /**
+     * ฟิลด์เจ้าหน้าที่ผู้รับผิดชอบ — เก็บเป็นรหัสอ้างอิงทะเบียนเจ้าหน้าที่
+     *
+     * ล้างคอลัมน์ชื่อแบบข้อความทิ้งเมื่อผูกรหัสแล้ว เหลือแหล่งความจริงเดียว
+     * ไม่งั้นแก้ชื่อในทะเบียนเจ้าหน้าที่แล้วชื่อเก่าจะค้างอยู่ในกิจกรรม
+     *
+     * ยังไม่ได้อัปเดตฐานข้อมูล (ไม่มีคอลัมน์ officer_id) = ไม่แตะอะไรเลย
+     * ถ้าเผลอส่ง officer => null ไป ชื่อเดิมของแถวนั้นจะหายทันที
+     *
+     * @param  array<string, mixed>  $v
+     * @return array<string, mixed>
+     */
+    private function officerFields(array $v): array
+    {
+        if (! Schema::hasColumn('activities', 'officer_id')) {
+            return [];
+        }
+
+        return [
+            'officer_id' => $v['officer_id'] ?? null,
+            'officer' => null,
+        ];
+    }
+
     private function onlyExistingColumns(array $data): array
     {
         static $columns = null;
@@ -184,7 +208,7 @@ class ActivityController extends Controller
         $hasUnit = Schema::hasColumn('activities', 'unit');
 
         /* เจ้าหน้าที่เลือกจากรายชื่อกลาง — ถ้ายังไม่มีใครในรายชื่อ ก็ไม่มีอะไรให้เลือก จึงยังไม่บังคับ */
-        $hasOfficer = Schema::hasColumn('activities', 'officer')
+        $hasOfficer = Schema::hasColumn('activities', 'officer_id')
             && Schema::hasTable('staff')
             && Staff::exists();
 
@@ -198,7 +222,7 @@ class ActivityController extends Controller
             'name' => ['required', 'string', 'max:500'],
             'budget' => ['required', 'numeric', 'min:0'],
             'unit' => [$need($hasUnit), 'string', 'max:150'],
-            'officer' => [$need($hasOfficer), 'string', 'max:180'],
+            'officer_id' => [$need($hasOfficer), 'integer', 'exists:staff,id'],
             'lecturer_name' => [$need($hasLecturerColumns), 'string', 'max:150'],
             'lecturer_phone' => [$need($hasLecturerColumns), 'string', 'regex:/^\d{3}-\d{3}-\d{4}$|^\d{9,10}$/'],
             'lecturer_id_card' => [$need($hasLecturerColumns), 'string'],
@@ -208,7 +232,8 @@ class ActivityController extends Controller
             'name.required' => 'กรอกชื่อกิจกรรม',
             'budget.required' => 'กรอกงบประมาณ',
             'unit.required' => 'เลือกคณะ / หน่วยงานรับผิดชอบ',
-            'officer.required' => 'เลือกเจ้าหน้าที่ผู้รับผิดชอบ',
+            'officer_id.required' => 'เลือกเจ้าหน้าที่ผู้รับผิดชอบ',
+            'officer_id.exists' => 'ไม่พบเจ้าหน้าที่คนนี้ในทะเบียน — เลือกจากรายการอีกครั้ง',
             'lecturer_name.required' => 'กรอกชื่ออาจารย์ที่รับผิดชอบ',
             'lecturer_phone.required' => 'กรอกเบอร์โทรของอาจารย์ที่รับผิดชอบ',
             'lecturer_id_card.required' => 'กรอกเลขประจำตัวประชาชนของอาจารย์ที่รับผิดชอบ',
@@ -251,6 +276,15 @@ class ActivityController extends Controller
         $pa = (string) $request->query('pa', '');       // กรองเฉพาะกิจกรรมเดียว
         $unit = (string) $request->query('unit', '');   // กรองตามคณะ/หน่วยงานที่รับผิดชอบ
         $officer = (string) $request->query('officer', '');   // กรองตามเจ้าหน้าที่ผู้รับผิดชอบ
+
+        /* ค่าเริ่มต้นของหน้านี้ = เห็นเฉพาะกิจกรรมของโครงการที่ยังดำเนินการอยู่
+           กิจกรรมของโครงการที่ปิดแล้วไม่ได้หายไปไหน เลือก «ทุกสถานะ» เพื่อดูได้ตลอด */
+        $programStatusReady = Schema::hasColumn('programs', 'status');
+        $pst = (string) $request->query('pst', Program::STATUS_OPEN);
+
+        if (! $programStatusReady || ! in_array($pst, [...Program::STATUSES, 'all'], true)) {
+            $pst = 'all';
+        }
         /* เปลี่ยนปีงบแล้วโครงการหลักที่ค้างอยู่อาจเป็นของปีอื่น → ทิ้งไป
            ไม่งั้นสองตัวกรองขัดกันเองจนตารางว่าง โดยผู้ใช้ไม่รู้สาเหตุ */
         if ($fy && $pg) {
@@ -285,7 +319,15 @@ class ActivityController extends Controller
             }
         }
 
-        $rows = $this->activities->filter($fy, $q, $pg, $pa, $unit, $officer);
+        $rows = $this->activities->filter(
+            $fy, $q, $pg, $pa, $unit, $officer,
+            $pst === 'all' ? null : $pst
+        );
+
+        /* จำนวนที่ถูกซ่อนเพราะตัวกรองสถานะโครงการ — บอกไว้ จะได้ไม่งงว่ากิจกรรมหายไปไหน */
+        $hiddenByStatus = $pst === 'all'
+            ? 0
+            : count($this->activities->filter($fy, $q, $pg, $pa, $unit, $officer)) - count($rows);
 
         $counts = [];
 
@@ -308,10 +350,15 @@ class ActivityController extends Controller
             'units' => $this->activities->units(),
             'officer' => $officer,
             'officers' => $this->activities->officers(),
+            'pst' => $pst,
+            'programStatusReady' => $programStatusReady,
+            'programStatuses' => Program::STATUSES,
+            'hiddenByStatus' => max(0, $hiddenByStatus),
             /* ตัวเลือกในฟอร์ม — มาจากรายชื่อกลางที่จัดการในเมนู «เจ้าหน้าที่» และ «คณะ / หน่วยงาน»
                ตารางอาจยังไม่ถูกสร้าง (ยังไม่ได้รัน migration) จึงต้องเช็คก่อน ไม่ใช่พังทั้งหน้า */
-            'officerOptions' => Schema::hasTable('staff')
-                ? Staff::orderBy('full_name')->pluck('full_name')->all()
+            /* รหัส → ชื่อ เพราะช่องเลือกส่งเป็น officer_id แล้ว */
+            'officerOptions' => Schema::hasTable('staff') && Schema::hasColumn('activities', 'officer_id')
+                ? Staff::orderBy('full_name')->pluck('full_name', 'id')->all()
                 : [],
             'unitOptions' => Schema::hasTable('units')
                 ? Unit::orderBy('name')->pluck('name')->all()
@@ -327,6 +374,9 @@ class ActivityController extends Controller
             'fiscalYears' => $this->activities->fiscalYears(),
             'programs' => $this->activities->programs(),
             'programsByYear' => $this->activities->programsByYear(),
+            /* ฟอร์มเลือกได้เฉพาะโครงการที่ยังดำเนินการอยู่ — ตัวกรองด้านบนยังเห็นครบทุกโครงการ
+               ไม่งั้นกิจกรรมของโครงการที่ปิดแล้วจะหาไม่เจอ */
+            'programsByYearOpen' => $this->activities->programsByYear(true),
             'yearOptions' => $this->activities->yearOptions(),
             'counts' => $counts,
             'maxCount' => max(1, max($counts ?: [1])),

@@ -80,10 +80,26 @@
             </div>
 
             @php
-                /* โครงการหลักของปีงบที่เลือกอยู่ — เลือกจากตาราง programs */
-                $yearPrograms = $programsByYear[(int) $fy] ?? [];
+                /* โครงการหลักของปีงบที่เลือกอยู่ — เลือกได้เฉพาะโครงการที่ยังดำเนินการอยู่
+                   โครงการที่ปิดแล้วไม่ควรรับกิจกรรมใหม่ */
+                $openByYear = $programsByYearOpen ?? $programsByYear;
+                $yearPrograms = $openByYear[(int) $fy] ?? [];
                 $currentProgramId = (string) old('program_id', $editing ? ($activity['program_id'] ?? '') : '');
                 $isNewProgram = $currentProgramId === '__new';
+
+                /* กิจกรรมที่กำลังแก้อยู่ใต้โครงการที่ปิดไปแล้ว — ต้องคงตัวเลือกนั้นไว้
+                   ไม่งั้นแค่เปิดฟอร์มแล้วกดบันทึก กิจกรรมจะถูกย้ายไปโครงการอื่นโดยไม่ตั้งใจ */
+                $inList = collect($yearPrograms)->contains(fn ($o) => (string) $o['id'] === $currentProgramId);
+
+                if ($currentProgramId !== '' && ! $isNewProgram && ! $inList) {
+                    foreach (($programsByYear[(int) $fy] ?? []) as $option) {
+                        if ((string) $option['id'] === $currentProgramId) {
+                            array_unshift($yearPrograms, $option + ['closed' => true]);
+
+                            break;
+                        }
+                    }
+                }
             @endphp
             <div class="f full {{ $err('program_id') }}">
                 <label>ชื่อโครงการหลัก <span class="req">*</span>
@@ -92,7 +108,7 @@
                 <select name="program_id" id="pjProgram">
                     @forelse ($yearPrograms as $option)
                         <option value="{{ $option['id'] }}" @selected($currentProgramId === (string) $option['id'])>
-                            {{ $option['name'] }}
+                            {{ $option['name'] }}{{ ($option['closed'] ?? false) ? ' (โครงการปิดแล้ว)' : '' }}
                         </option>
                     @empty
                         <option value="" disabled @selected(! $isNewProgram)>— ปีงบนี้ยังไม่มีโครงการหลัก —</option>
@@ -108,9 +124,9 @@
 
                 <span class="hint" id="pjProgramHint">
                     @if ($yearPrograms)
-                        เลือกจากตาราง programs — ปีงบ {{ $fy }} มี {{ count($yearPrograms) }} โครงการหลัก
+                        ปีงบ {{ $fy }} มี {{ count($yearPrograms) }} โครงการหลักที่กำลังดำเนินการ
                     @else
-                        ปีงบ {{ $fy }} ยังไม่มีโครงการหลัก — พิมพ์ชื่อใหม่ในช่องด้านบน
+                        ปีงบ {{ $fy }} ยังไม่มีโครงการหลักที่กำลังดำเนินการ — พิมพ์ชื่อใหม่ในช่องด้านบน
                     @endif
                 </span>
                 <span class="msg"><x-icon name="warn" :size="12" :stroke="2.4" />
@@ -125,7 +141,9 @@
 
             <div class="f {{ $err('budget') }}">
                 <label>งบประมาณ (บาท) <span class="req">*</span></label>
-                <input name="budget" type="number" min="0" step="1000"
+                {{-- step="any" — งบจริงไม่ได้ลงท้ายพันเสมอ (เช่น 587,178)
+                     ถ้าใช้ step=1000 เบราว์เซอร์จะเตือนว่าค่าไม่ถูกต้องและกดบันทึกไม่ผ่าน --}}
+                <input name="budget" type="number" min="0" step="any"
                        value="{{ old('budget', $editing ? $activity['budget'] : '') }}" placeholder="450000">
                 <span class="msg"><x-icon name="warn" :size="12" :stroke="2.4" /> {{ $errors->first('budget') ?: 'กรอกงบประมาณ' }}</span>
             </div>
@@ -204,23 +222,38 @@
                 <div class="f">
                     <label>เจ้าหน้าที่ผู้รับผิดชอบ <span class="req">*</span></label>
                     @php
+                        /* รายชื่อมาจากตาราง «เจ้าหน้าที่» โดยตรง — เก็บลงฐานข้อมูลเป็นรหัส (officer_id)
+                           ไม่ใช่ชื่อ แก้ชื่อในทะเบียนที่เดียว กิจกรรมทุกรายการจึงเปลี่ยนตาม */
                         $officers = $officerOptions ?? [];
-                        $currentOfficer = old('officer', $editing ? ($activity['officer'] ?? '') : '');
+                        $currentOfficer = (string) old('officer_id', $editing ? ($activity['officer_id'] ?? '') : '');
 
-                        if ($currentOfficer !== '' && ! in_array($currentOfficer, $officers, true)) {
-                            array_unshift($officers, $currentOfficer);
-                        }
+                        /* แถวเก่าที่ยังเก็บเป็นชื่อและจับคู่กับทะเบียนไม่ได้ — บอกไว้ให้เลือกใหม่
+                           ไม่แอบทิ้งเงียบ ๆ จะได้รู้ว่าค่าเดิมคืออะไร */
+                        $legacyOfficer = $currentOfficer === '' && $editing
+                            ? trim((string) ($activity['officer'] ?? ''))
+                            : '';
                     @endphp
-                    <select name="officer" @if ($hasOfficerOptions) required @endif>
-                        <option value="">— เลือกเจ้าหน้าที่ —</option>
-                        @foreach ($officers as $officerOption)
-                            <option value="{{ $officerOption }}" @selected($currentOfficer === $officerOption)>{{ $officerOption }}</option>
+                    <select name="officer_id" @if ($hasOfficerOptions) required @endif>
+                        <option value="">{{ $hasOfficerOptions ? '— เลือกเจ้าหน้าที่ —' : '— ยังไม่มีรายชื่อเจ้าหน้าที่ —' }}</option>
+                        @foreach ($officers as $officerId => $officerName)
+                            <option value="{{ $officerId }}" @selected($currentOfficer === (string) $officerId)>{{ $officerName }}</option>
                         @endforeach
                     </select>
-                    @unless (count($officers))
-                        <span class="hint">ยังไม่มีรายชื่อ — เพิ่มได้ที่เมนู
-                            <a href="{{ route('staff.index') }}">เจ้าหน้าที่</a></span>
-                    @endunless
+
+                    @if ($legacyOfficer !== '')
+                        <span class="hint" style="color:var(--warning-ink)">
+                            ค่าเดิมคือ «{{ $legacyOfficer }}» ซึ่งยังไม่อยู่ในทะเบียนเจ้าหน้าที่ — เลือกชื่อจากรายการเพื่อผูกให้ถูกคน
+                        </span>
+                    @elseif ($hasOfficerOptions)
+                        <span class="hint">{{ count($officers) }} รายชื่อจากเมนู
+                            <a href="{{ route('staff.index') }}" target="_blank" rel="noopener">เจ้าหน้าที่</a></span>
+                    @else
+                        <span class="hint" style="color:var(--warning-ink)">
+                            ตารางเจ้าหน้าที่ยังไม่มีรายชื่อ — เปิด
+                            <a href="{{ route('staff.index') }}" target="_blank" rel="noopener"><b>เมนูเจ้าหน้าที่</b></a>
+                            เพิ่มชื่อก่อน แล้วกลับมารีเฟรชหน้านี้ ชื่อจะขึ้นในช่องนี้เอง
+                        </span>
+                    @endif
                 </div>
 
                 <div class="f full {{ $err('description') }}">
@@ -244,4 +277,5 @@
 <form id="migrateForm" method="POST" action="{{ route('setup.migrate') }}">@csrf</form>
 
 {{-- โครงการหลักแยกตามปีงบ — ใช้เปลี่ยนรายการตามปีที่เลือก --}}
-<script type="application/json" id="programs-by-year">@json($programsByYear)</script>
+{{-- JS ใช้ชุดนี้เปลี่ยนรายการโครงการเมื่อสลับปีงบ — เฉพาะโครงการที่ยังดำเนินการอยู่ --}}
+<script type="application/json" id="programs-by-year">@json($programsByYearOpen ?? $programsByYear)</script>

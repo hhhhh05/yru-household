@@ -13,7 +13,7 @@ class Activity extends Model
     use SoftDeletes;
 
     protected $fillable = [
-        'pa', 'program_id', 'fiscal_year', 'name', 'budget', 'target_households', 'unit', 'officer',
+        'pa', 'program_id', 'fiscal_year', 'name', 'budget', 'target_households', 'unit', 'officer', 'officer_id',
         'lecturer_name', 'lecturer_phone', 'lecturer_id_card', 'workload_per_week', 'description',
     ];
 
@@ -33,6 +33,17 @@ class Activity extends Model
         return $this->belongsTo(Program::class);
     }
 
+    /**
+     * เจ้าหน้าที่ผู้รับผิดชอบ — อ้างอิงตาราง staff ด้วย officer_id
+     *
+     * ตั้งชื่อเมธอดว่า officerStaff ไม่ใช่ officer เพราะมีคอลัมน์ชื่อ officer อยู่แล้ว
+     * ถ้าตั้งชื่อชนกัน $activity->officer จะคืนค่าคอลัมน์ ไม่ใช่ความสัมพันธ์ อ่านโค้ดแล้วสับสน
+     */
+    public function officerStaff(): BelongsTo
+    {
+        return $this->belongsTo(Staff::class, 'officer_id');
+    }
+
     public function enrollments(): HasMany
     {
         return $this->hasMany(Enrollment::class);
@@ -49,9 +60,15 @@ class Activity extends Model
             'fy' => $this->fiscal_year,
             'program' => $this->program->name ?? '',
             'program_id' => $this->program_id,
+            /* สถานะของโครงการแม่ — ใช้กรอง «เฉพาะกิจกรรมของโครงการที่กำลังดำเนินการ»
+               กิจกรรมที่ยังไม่ผูกโครงการถือว่ายังเดินอยู่ (ไม่ใช่ปิด) จะได้ไม่หายไปเงียบ ๆ */
+            'program_status' => $this->program->status ?? null,
             'target' => $this->target_households,
             'unit' => $this->unit,
-            'officer' => $this->officer,
+            /* ชื่อเจ้าหน้าที่อ่านจากทะเบียนเจ้าหน้าที่เป็นหลัก (ผูกด้วย id)
+               แถวเก่าที่ยังจับคู่ไม่ได้ ค่อยถอยไปใช้ชื่อที่เคยพิมพ์ไว้ในคอลัมน์เดิม */
+            'officer_id' => $this->officer_id,
+            'officer' => $this->officerStaff->full_name ?? $this->officer,
             'lecturer' => $this->lecturer_name,
             'lecturer_phone' => $this->lecturer_phone,
             'lecturer_id_card' => $this->lecturer_id_card,

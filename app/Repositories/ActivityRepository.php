@@ -24,7 +24,7 @@ class ActivityRepository
             return $this->cache;
         }
 
-        $rows = Activity::with('program')
+        $rows = Activity::with(['program', 'officerStaff'])
             ->orderBy('fiscal_year')
             ->orderBy('pa')
             ->get()
@@ -32,6 +32,44 @@ class ActivityRepository
             ->all();
 
         return $this->cache = $rows;
+    }
+
+    /**
+     * ความครบถ้วนของข้อมูลกิจกรรมหนึ่งรายการ (เป็นเปอร์เซ็นต์)
+     *
+     * นับเฉพาะ «ข้อมูลของตัวกิจกรรมเอง» ที่ต้องกรอกในฟอร์ม
+     * ไม่รวมจำนวนครัวเรือนที่เข้าร่วม เพราะนั่นเป็นงานคนละส่วน
+     * (กิจกรรมที่กรอกข้อมูลครบแต่ยังไม่เริ่มรับครัวเรือน ไม่ควรถูกนับว่ากรอกไม่ครบ)
+     *
+     * @param  array<string, mixed>  $activity  แถวรูปแบบเดิมจาก all()
+     * @return array{filled:int, total:int, pct:int, missing:array<int, string>}
+     */
+    public static function completeness(array $activity): array
+    {
+        $has = fn ($v) => $v !== null && trim((string) $v) !== '';
+
+        $checks = [
+            'โครงการหลัก' => $has($activity['program_id'] ?? null),
+            'ชื่อกิจกรรม' => $has($activity['name'] ?? null),
+            'งบประมาณ' => (float) ($activity['budget'] ?? 0) > 0,
+            'คณะ / หน่วยงาน' => $has($activity['unit'] ?? null),
+            'เจ้าหน้าที่ผู้รับผิดชอบ' => $has($activity['officer_id'] ?? null) || $has($activity['officer'] ?? null),
+            'อาจารย์ที่รับผิดชอบ' => $has($activity['lecturer'] ?? null),
+            'เบอร์โทรอาจารย์' => $has($activity['lecturer_phone'] ?? null),
+            'เลขประจำตัวประชาชน' => $has($activity['lecturer_id_card'] ?? null),
+            'ภาระงาน / สัปดาห์' => $has($activity['workload'] ?? null),
+            'คำอธิบายโครงการ' => $has($activity['description'] ?? null),
+        ];
+
+        $filled = count(array_filter($checks));
+        $total = count($checks);
+
+        return [
+            'filled' => $filled,
+            'total' => $total,
+            'pct' => (int) round($filled / max(1, $total) * 100),
+            'missing' => array_keys(array_filter($checks, fn ($ok) => ! $ok)),
+        ];
     }
 
     /** @return array<int, string> ปีงบ → ชื่อโครงการหลัก */
@@ -51,11 +89,22 @@ class ActivityRepository
      *
      * @return array<int, array<int, array{id:int, name:string}>>
      */
-    public function programsByYear(): array
+    public function programsByYear(bool $openOnly = false): array
     {
         $out = [];
 
-        foreach (Program::orderBy('fiscal_year')->orderBy('id')->get() as $program) {
+        $query = Program::orderBy('fiscal_year')->orderBy('id');
+
+        /* $openOnly = เอาเฉพาะโครงการที่ยังเดินอยู่ (ใช้ในฟอร์มที่ต้องเลือกโครงการ)
+           โครงการที่ปิดแล้วไม่ควรรับกิจกรรมใหม่เพิ่ม
+           เช็คคอลัมน์ก่อน เพราะฐานข้อมูลที่ยังไม่ได้อัปเดตจะไม่มีคอลัมน์ status */
+        if ($openOnly && \Illuminate\Support\Facades\Schema::hasColumn('programs', 'status')) {
+            $query->where(function ($q) {
+                $q->where('status', Program::STATUS_OPEN)->orWhereNull('status');
+            });
+        }
+
+        foreach ($query->get() as $program) {
             $out[$program->fiscal_year][] = ['id' => $program->id, 'name' => $program->name];
         }
 
@@ -229,6 +278,7 @@ class ActivityRepository
         ?string $pa = null,
         ?string $unit = null,
         ?string $officer = null,
+        ?string $programStatus = null,
     ): array {
         $rows = $this->all();
 
@@ -247,6 +297,18 @@ class ActivityRepository
 
         if ($unit) {
             $rows = array_filter($rows, fn ($p) => trim((string) ($p['unit'] ?? '')) === trim($unit));
+        }
+
+        /* กรองตามสถานะของโครงการแม่
+           นับว่า «ปิดโครงการ» เฉพาะที่เขียนไว้ตรงตัวเท่านั้น
+           ค่าอื่นทั้งหมด (null · ค่าว่าง · ยังไม่ผูกโครงการ · ค่าเก่าที่สะกดไม่ตรง) ถือว่ายังดำเนินการอยู่
+           ไม่งั้นข้อมูลที่ไม่มีสถานะจะหายไปทั้งหมดโดยไม่มีใครรู้ว่าเพราะอะไร */
+        if ($programStatus) {
+            $closed = \App\Models\Program::STATUS_CLOSED;
+
+            $rows = $programStatus === $closed
+                ? array_filter($rows, fn ($p) => trim((string) ($p['program_status'] ?? '')) === $closed)
+                : array_filter($rows, fn ($p) => trim((string) ($p['program_status'] ?? '')) !== $closed);
         }
 
         if ($officer) {

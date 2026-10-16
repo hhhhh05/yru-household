@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@php use App\Support\Thai; @endphp
+@php use App\Repositories\ActivityRepository; use App\Support\Thai; @endphp
 
 @section('content')
     <div class="page-head">
@@ -24,7 +24,10 @@
 
     {{-- กรองอยู่หรือเปล่า — ใช้ทั้งปุ่มล้างตัวกรองและข้อความใต้การ์ดสรุป
          ต้องประกาศก่อนแถบตัวกรอง เพราะปุ่มล้างอยู่ในแถบนั้น --}}
-    @php $filtering = $fy !== '' || $q !== '' || $pg !== '' || $pa !== '' || $unit !== '' || $officer !== ''; @endphp
+    @php
+        $filtering = $fy !== '' || $q !== '' || $pg !== '' || $pa !== '' || $unit !== '' || $officer !== ''
+            || ($programStatusReady && $pst !== \App\Models\Program::STATUS_OPEN);
+    @endphp
 
     {{-- ------------------------------------------------------- แถบตัวกรอง
          วางไว้บนสุด ตัวเลขในการ์ดสรุปด้านล่างจะขยับตามที่กรองไว้ --}}
@@ -47,6 +50,20 @@
         <form method="GET" action="{{ route('activities.index') }}" class="tbar fbar js-auto">
             {{-- ปีงบเป็นช่องเลือกเหมือนตัวกรองอื่น (เดิมเป็นปุ่มแท็บแยกอยู่ท้ายแถบ)
                  เปลี่ยนปีงบแล้วโครงการ/กิจกรรมที่ค้างอยู่ ฝั่งเซิร์ฟเวอร์จะล้างให้เองถ้าคนละปี --}}
+            @if ($programStatusReady)
+                {{-- ค่าตั้งต้น = เฉพาะกิจกรรมของโครงการที่กำลังดำเนินการ
+                     กิจกรรมที่ยังไม่ผูกโครงการถือว่ายังเดินอยู่ จึงไม่หายไป --}}
+                <div class="ff">
+                    <span>สถานะโครงการ</span>
+                    <select class="sel" name="pst">
+                        @foreach ($programStatuses as $status)
+                            <option value="{{ $status }}" @selected($pst === $status)>{{ $status }}</option>
+                        @endforeach
+                        <option value="all" @selected($pst === 'all')>ทุกสถานะ</option>
+                    </select>
+                </div>
+            @endif
+
             <div class="ff">
                 <span>ปีงบประมาณ</span>
                 <select class="sel" name="fy">
@@ -95,6 +112,12 @@
                 </select>
             </div>
 
+            @if ($hiddenByStatus)
+                <span style="font-size:12.5px;color:var(--ink-3);align-self:end;padding-bottom:9px">
+                    ซ่อนไว้ {{ Thai::fmt($hiddenByStatus) }} กิจกรรม
+                </span>
+            @endif
+
             {{-- ล้างตัวกรองทั้งหมดในคลิกเดียว — โผล่เฉพาะตอนที่กรองอยู่จริง --}}
             @if ($filtering)
                 <a class="btn ghost sm" href="{{ route('activities.index') }}">
@@ -135,6 +158,25 @@
             <div class="tile-ic"><x-icon name="box" :size="16" :stroke="2" /></div>
         </div>
 
+        @php
+            /* ความครบถ้วนของข้อมูลกิจกรรม — เฉลี่ยจากกิจกรรมที่อยู่ในขอบเขตที่กรองไว้
+               ไม่รวมจำนวนครัวเรือนที่เข้าร่วม เพราะเป็นงานคนละส่วนกัน */
+            $completeness = array_map(fn ($r) => ActivityRepository::completeness($r)['pct'], $rows);
+            $completeAvg = $completeness ? (int) round(array_sum($completeness) / count($completeness)) : 0;
+            $completeFull = count(array_filter($completeness, fn ($pct) => $pct === 100));
+        @endphp
+
+        <div class="tile">
+            <div class="tl">ข้อมูลกิจกรรมครบถ้วน</div>
+            <div class="tv">{{ $completeAvg }}<small> %</small></div>
+            <div class="td">ครบ 100% แล้ว {{ Thai::fmt($completeFull) }}/{{ Thai::fmt($scopeCount) }} กิจกรรม
+                · ไม่นับครัวเรือนที่เข้าร่วม</div>
+            <div class="tile-ic"><x-icon name="chk" :size="16" :stroke="2" /></div>
+            <div class="meter" style="margin-top:9px">
+                <i style="width:{{ $completeAvg }}%"></i>
+            </div>
+        </div>
+
         <div class="tile">
             <div class="tl">กิจกรรม</div>
             <div class="tv">{{ Thai::fmt($scopeCount) }}</div>
@@ -164,6 +206,7 @@
                     <th class="r" style="width:130px">งบประมาณ (บาท)</th>
                     <th style="width:170px">อาจารย์หัวหน้าโครงการ</th>
                     <th style="width:170px">เจ้าหน้าที่ผู้รับผิดชอบ</th>
+                    <th style="width:150px">ข้อมูลครบ</th>
                     <th style="width:190px">ครัวเรือนเข้าร่วม</th>
                     <th style="width:78px"></th>
                 </tr>
@@ -172,7 +215,7 @@
                 @foreach ($tree as $year => $yearGroup)
                     {{-- ชั้นที่ 1 · ปีงบประมาณ --}}
                     <tr style="background:var(--surface-2)">
-                        <td colspan="7" style="padding:8px 12px">
+                        <td colspan="8" style="padding:8px 12px">
                             <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
                                 <b style="font-size:12.5px;font-weight:700;letter-spacing:.03em">ปีงบประมาณ {{ $year }}</b>
                                 <span class="pill">{{ count($yearGroup['programs']) }} โครงการหลัก</span>
@@ -186,7 +229,7 @@
                     @foreach ($yearGroup['programs'] as $programId => $program)
                     {{-- ชั้นที่ 2 · โครงการหลัก --}}
                     <tr>
-                        <td colspan="7" style="padding:7px 12px 7px 22px;border-left:3px solid var(--brand);background:var(--surface)">
+                        <td colspan="8" style="padding:7px 12px 7px 22px;border-left:3px solid var(--brand);background:var(--surface)">
                             <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
                                 <x-icon name="box" :size="13" :stroke="2.1" />
                                 <b style="font-size:12px;font-weight:600;flex:1;min-width:200px">{{ $program['name'] }}</b>
@@ -203,7 +246,10 @@
                     </tr>
 
                     @foreach ($program['rows'] as $p)
-                        @php $n = $counts[$p['pa']] ?? 0; @endphp
+                        @php
+                            $n = $counts[$p['pa']] ?? 0;
+                            $cm = ActivityRepository::completeness($p);
+                        @endphp
                         <tr>
                             <td><span class="code" style="color:var(--brand);font-weight:600">{{ $p['pa'] }}</span></td>
                             <td>
@@ -223,6 +269,17 @@
                                 @else
                                     <span class="t-empty"></span>
                                 @endif
+                            </td>
+                            <td>
+                                {{-- ความครบถ้วนของข้อมูลกิจกรรมเอง (ไม่รวมครัวเรือนที่เข้าร่วม)
+                                     ชี้ที่แถบเพื่อดูว่ายังขาดช่องไหนบ้าง --}}
+                                <div style="display:flex;align-items:center;gap:8px"
+                                     data-tip="<b>กรอกแล้ว {{ $cm['filled'] }}/{{ $cm['total'] }} ช่อง</b>{{ $cm['missing'] ? 'ยังขาด: '.e(implode(' · ', $cm['missing'])) : 'ครบทุกช่องแล้ว' }}">
+                                    <div class="meter" style="flex:1">
+                                        <i style="width:{{ $cm['pct'] }}%"></i>
+                                    </div>
+                                    <b class="num" style="width:38px;text-align:right;font-weight:600;color:{{ $cm['pct'] === 100 ? 'var(--good-ink)' : 'inherit' }}">{{ $cm['pct'] }}%</b>
+                                </div>
                             </td>
                             <td>
                                 <div style="display:flex;align-items:center;gap:9px">
